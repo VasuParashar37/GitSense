@@ -3,18 +3,28 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 )
 
 type Commit struct {
-    ID         int    `json:"id"`
-    Hash       string `json:"hash"`
-    Message    string `json:"message"`
-    CommitTime string `json:"commit_time"`
+	ID         int    `json:"id"`
+	Hash       string `json:"hash"`
+	Message    string `json:"message"`
+	CommitTime string `json:"commit_time"`
 }
 type Stats struct {
 	TotalCommits int    `json:"total_commits"`
 	LatestCommit string `json:"latest_commit"`
 	LastUpdated  string `json:"last_updated"`
+}
+
+type ProjectSummary struct {
+	TotalFiles    int     `json:"total_files"`
+	ActiveFiles   int     `json:"active_files"`
+	StableFiles   int     `json:"stable_files"`
+	InactiveFiles int     `json:"inactive_files"`
+	ActivityScore float64 `json:"activity_score"`
+	ProjectState  string  `json:"project_state"`
 }
 
 // Health check API
@@ -46,6 +56,7 @@ func getCommitsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(commits)
 }
 
+// Get stats API
 func getStatsHandler(w http.ResponseWriter, r *http.Request) {
 	var stats Stats
 
@@ -71,4 +82,66 @@ func getStatsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
+// Get project summary API
+func getProjectSummary(w http.ResponseWriter, r *http.Request) {
+	rows, err := DB.Query(`
+        SELECT last_modified FROM file_activity
+    `)
+	if err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
 
+	total := 0
+	active := 0
+	stable := 0
+	inactive := 0
+
+	for rows.Next() {
+		var lastModified string
+		rows.Scan(&lastModified)
+
+		t, err := time.Parse(time.RFC3339, lastModified)
+		if err != nil {
+			t, err = time.Parse("2006-01-02 15:04:05", lastModified)
+			if err != nil {
+				continue
+			}
+		}
+		days := time.Since(t).Hours() / 24
+
+		total++
+
+		if days <= 7 {
+			active++
+		} else if days <= 30 {
+			stable++
+		} else {
+			inactive++
+		}
+	}
+
+	activityScore := 0.0
+	if total > 0 {
+		activityScore = (float64(active) / float64(total)) * 100
+	}
+
+	state := "STABLE"
+	if activityScore > 50 {
+		state = "HIGH ACTIVITY"
+	} else if activityScore > 25 {
+		state = "EVOLVING"
+	}
+
+	summary := ProjectSummary{
+		TotalFiles:    total,
+		ActiveFiles:   active,
+		StableFiles:   stable,
+		InactiveFiles: inactive,
+		ActivityScore: activityScore,
+		ProjectState:  state,
+	}
+
+	json.NewEncoder(w).Encode(summary)
+}

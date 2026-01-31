@@ -31,7 +31,7 @@ func main() {
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/commits", getCommitsHandler)
 	http.HandleFunc("/stats", getStatsHandler)
-
+	http.HandleFunc("/summary", getProjectSummary)
 	
 	// Run server in a goroutine
 	go func() {
@@ -41,7 +41,7 @@ func main() {
 
 	// 4. Real-time service loop
 	for {
-		time.Sleep(60 * time.Second)
+		time.Sleep(600 * time.Second)
 
 		fmt.Println("🔄 Syncing Git changes...", time.Now())
 		err := SyncCommits(repoPath)

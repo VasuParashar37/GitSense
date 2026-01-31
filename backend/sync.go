@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"strconv"
 )
 
 /**
@@ -83,6 +84,47 @@ func SyncCommits(repoPath string) error {
 			)
 		}
 	}
+
+
+	// Now, track file activity
+	cmd = exec.Command(
+		"git",
+		"log",
+		"--name-only",
+		"--pretty=format:%ct",
+	)
+	cmd.Dir = repoPath
+	
+	out, _ = cmd.Output()
+	scanner = bufio.NewScanner(strings.NewReader(string(out)))
+	
+	var currentTime string
+	
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+	
+		if line == "" {
+			continue
+		}
+	
+		// If line is timestamp
+		if _, err := strconv.ParseInt(line, 10, 64); err == nil {
+			currentTime = line
+			continue
+		}
+	
+		// Otherwise it's a filename
+		DB.Exec(`
+			INSERT INTO file_activity
+			(file_name, commit_count, last_modified)
+			VALUES (?, 1, datetime(?, 'unixepoch'))
+			ON CONFLICT(file_name)
+			DO UPDATE SET
+				commit_count = commit_count + 1,
+				last_modified = datetime(?, 'unixepoch')
+		`, line, currentTime, currentTime)
+	}
+	
 
 	return nil
 }
