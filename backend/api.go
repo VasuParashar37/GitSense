@@ -6,111 +6,31 @@ import (
 	"time"
 )
 
-type Commit struct {
-	ID         int    `json:"id"`
-	Hash       string `json:"hash"`
-	Message    string `json:"message"`
-	CommitTime string `json:"commit_time"`
-}
-type Stats struct {
-	TotalCommits int    `json:"total_commits"`
-	LatestCommit string `json:"latest_commit"`
-	LastUpdated  string `json:"last_updated"`
-}
-
-type ProjectSummary struct {
-	TotalFiles    int     `json:"total_files"`
-	ActiveFiles   int     `json:"active_files"`
-	StableFiles   int     `json:"stable_files"`
-	InactiveFiles int     `json:"inactive_files"`
-	ActivityScore float64 `json:"activity_score"`
-	ProjectState  string  `json:"project_state"`
-}
-
-// Health check API
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Server is running fine 🚀"))
+	w.Write([]byte("GitSense backend running 🚀"))
 }
 
-// Get commits API
-func getCommitsHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := DB.Query(
-		"SELECT id, hash, message, commit_time FROM commits ORDER BY datetime(commit_time) DESC LIMIT 20",
-	)
-	if err != nil {
-		http.Error(w, "DB error", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var commits []Commit
-
-	for rows.Next() {
-		var c Commit
-		rows.Scan(&c.ID, &c.Hash, &c.Message, &c.CommitTime)
-		commits = append(commits, c)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(commits)
-}
-
-// Get stats API
-func getStatsHandler(w http.ResponseWriter, r *http.Request) {
-	var stats Stats
-
-	// Total commits
-	err := DB.QueryRow("SELECT COUNT(*) FROM commits").
-		Scan(&stats.TotalCommits)
-	if err != nil {
-		http.Error(w, "DB error", http.StatusInternalServerError)
-		return
-	}
-
-	// Latest commit
-	err = DB.QueryRow(
-		"SELECT message, commit_time FROM commits ORDER BY datetime(commit_time) DESC LIMIT 1",
-	).Scan(&stats.LatestCommit, &stats.LastUpdated)
-
-	if err != nil {
-		stats.LatestCommit = "No commits yet"
-		stats.LastUpdated = "-"
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
-}
-
-// Get project summary API
 func getProjectSummary(w http.ResponseWriter, r *http.Request) {
-	rows, err := DB.Query(`
-        SELECT last_modified FROM file_activity
-    `)
+	rows, err := DB.Query(`SELECT last_modified FROM file_activity`)
 	if err != nil {
-		http.Error(w, "DB error", http.StatusInternalServerError)
+		http.Error(w, "DB error", 500)
 		return
 	}
 	defer rows.Close()
 
-	total := 0
-	active := 0
-	stable := 0
-	inactive := 0
+	total, active, stable, inactive := 0, 0, 0, 0
 
 	for rows.Next() {
 		var lastModified string
 		rows.Scan(&lastModified)
 
-		t, err := time.Parse(time.RFC3339, lastModified)
+		t, err := time.Parse("2006-01-02 15:04:05", lastModified)
 		if err != nil {
-			t, err = time.Parse("2006-01-02 15:04:05", lastModified)
-			if err != nil {
-				continue
-			}
+			continue
 		}
-		days := time.Since(t).Hours() / 24
 
+		days := time.Since(t).Hours() / 24
 		total++
 
 		if days <= 7 {
@@ -122,26 +42,68 @@ func getProjectSummary(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	activityScore := 0.0
+	score := 0.0
 	if total > 0 {
-		activityScore = (float64(active) / float64(total)) * 100
+		score = (float64(active) / float64(total)) * 100
 	}
 
 	state := "STABLE"
-	if activityScore > 50 {
+	if score > 50 {
 		state = "HIGH ACTIVITY"
-	} else if activityScore > 25 {
+	} else if score > 25 {
 		state = "EVOLVING"
 	}
 
-	summary := ProjectSummary{
+	json.NewEncoder(w).Encode(ProjectSummary{
 		TotalFiles:    total,
 		ActiveFiles:   active,
 		StableFiles:   stable,
 		InactiveFiles: inactive,
-		ActivityScore: activityScore,
+		ActivityScore: score,
 		ProjectState:  state,
+	})
+}
+
+func getRepoHistory(w http.ResponseWriter, r *http.Request) {
+	repo := r.URL.Query().Get("repo")
+
+	if repo == "" {
+		http.Error(w, "Repo required", 400)
+		return
 	}
 
-	json.NewEncoder(w).Encode(summary)
+	rows, err := DB.Query(`
+		SELECT active_files, stable_files, inactive_files, activity_score, created_at
+		FROM repo_snapshots
+		WHERE repo_name = ?
+		ORDER BY created_at ASC
+	`, repo)
+
+	if err != nil {
+		http.Error(w, "DB error", 500)
+		return
+	}
+	defer rows.Close()
+
+	var history []map[string]interface{}
+
+	for rows.Next() {
+		var a, s, i int
+		var score float64
+		var time string
+
+		rows.Scan(&a, &s, &i, &score, &time)
+
+		history = append(history, map[string]interface{}{
+			"active":   a,
+			"stable":   s,
+			"inactive": i,
+			"score":    score,
+			"time":     time,
+		})
+	}
+
+	json.NewEncoder(w).Encode(history)
 }
+
+
