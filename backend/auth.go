@@ -77,7 +77,7 @@ func githubCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(
 		w,
 		r,
-		"http://localhost:8080/token?value="+token,
+		"https://gitsense-ooly.onrender.com/token?value=" + token,
 		http.StatusTemporaryRedirect,
 	)
 }

@@ -5,7 +5,7 @@ let authToken = "";
 // ----------------------------
 document.getElementById("login").addEventListener("click", () => {
     chrome.tabs.create({
-        url: "http://localhost:8080/auth/github"
+        url: "https://gitsense-ooly.onrender.com/auth/github"
     });
 });
 
@@ -27,7 +27,7 @@ window.addEventListener("message", (event) => {
 // LOAD USER REPOSITORIES
 // ----------------------------
 function loadRepositories() {
-    fetch("http://localhost:8080/repos", {
+    fetch("https://gitsense-ooly.onrender.com/repos", {
         headers: {
             "Authorization": authToken
         }
@@ -66,7 +66,7 @@ document.getElementById("sync").addEventListener("click", () => {
 
     const [owner, repo] = repoValue.split("/");
 
-    fetch(`http://localhost:8080/sync?owner=${owner}&repo=${repo}`, {
+    fetch(`https://gitsense-ooly.onrender.com/sync?owner=${owner}&repo=${repo}`, {
         headers: {
             "Authorization": authToken
         }
@@ -97,7 +97,7 @@ document.getElementById("sync").addEventListener("click", () => {
 // LOAD REPO HISTORY (GRAPH)
 // ----------------------------
 function loadHistory(repo) {
-    fetch(`http://localhost:8080/history?repo=${repo}`)
+    fetch(`https://gitsense-ooly.onrender.com/history?repo=${repo}`)
         .then(res => res.json())
         .then(data => {
             const ctx = document.getElementById("chart").getContext("2d");
