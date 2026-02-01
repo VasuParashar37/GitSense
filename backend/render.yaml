@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: gitsense-backend
+    env: go
+    plan: free
+    buildCommand: go build
+    startCommand: ./main
+    envVars:
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false

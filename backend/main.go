@@ -20,7 +20,7 @@ func main() {
 	http.HandleFunc("/project/summary", getProjectSummary)
 
 	// 🔐 OAuth routes
-	http.HandleFunc("/auth/github", githubLogin)
+	http.HandleFunc("/project/summary", githubLogin)
 	http.HandleFunc("/auth/callback", githubCallback)
 
 	// Sync repo
