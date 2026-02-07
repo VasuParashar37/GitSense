@@ -1,41 +1,77 @@
-let authToken = "";
-let selectedRepo = "";
+// Background script for auto-syncing repository activity
 
-// Listen for messages from popup
+// ----------------------------
+// MESSAGE LISTENER FROM POPUP
+// ----------------------------
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === "SET_TOKEN") {
-    authToken = msg.token;
+    chrome.storage.local.set({ authToken: msg.token });
+    console.log("✅ Token saved for background sync");
   }
 
   if (msg.type === "SET_REPO") {
-    selectedRepo = msg.repo;
+    chrome.storage.local.set({ selectedRepo: msg.repo });
+    console.log("✅ Repository set for background sync:", msg.repo);
+  }
+
+  if (msg.type === "CLEAR") {
+    chrome.storage.local.remove(['authToken', 'selectedRepo']);
+    console.log("✅ Background sync cleared");
   }
 });
 
-// Auto-sync every 2 minutes
-setInterval(() => {
-  if (!authToken || !selectedRepo) return;
+// ----------------------------
+// AUTO-SYNC FUNCTION
+// ----------------------------
+async function autoSync() {
+  // Get token and repo from storage
+  const result = await chrome.storage.local.get(['authToken', 'selectedRepo']);
+
+  const { authToken, selectedRepo } = result;
+
+  // Exit if not authenticated or no repo selected
+  if (!authToken || !selectedRepo) {
+    return;
+  }
 
   const [owner, repo] = selectedRepo.split("/");
 
-  // fetch(` https://gitsense-ooly.onrender.com/sync?owner=${owner}&repo=${repo}`, {
-  fetch(`http://localhost:8080/sync?owner=${owner}&repo=${repo}`, {
-    headers: {
-      Authorization: authToken
-    }
-  })
-    .then(res => res.text())
-    .then(msg => {
-      showNotification("Repo Updated", msg);
-    })
-    .catch(() => {});
-}, 120000); // 2 minutes
+  console.log(`🔄 Auto-syncing ${selectedRepo}...`);
 
-function showNotification(title, message) {
-  chrome.notifications.create({
-    type: "basic",
-    iconUrl: "icon.png",
-    title: title,
-    message: message
-  });
+  try {
+    // Sync the repository
+    const response = await fetch(`http://localhost:8080/sync?owner=${owner}&repo=${repo}`, {
+      headers: {
+        Authorization: authToken
+      }
+    });
+
+    const msg = await response.text();
+
+    // Only notify if significant activity detected
+    if (msg.includes("🔔")) {
+      console.log("🔔 Significant activity detected!");
+
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: "icon.png",
+        title: "GitSense Alert",
+        message: `Significant activity detected in ${repo}!`
+      });
+    } else {
+      console.log("✅ Auto-sync completed (no significant activity)");
+    }
+  } catch (error) {
+    console.error("❌ Auto-sync failed:", error);
+  }
 }
+
+// ----------------------------
+// RUN AUTO-SYNC EVERY 5 MINUTES
+// ----------------------------
+setInterval(autoSync, 300000); // 300000 ms = 5 minutes
+
+// Run sync immediately when background script starts (for testing)
+autoSync();
+
+console.log("🚀 GitSense background sync initialized (interval: 5 minutes)");

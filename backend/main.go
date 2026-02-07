@@ -51,4 +51,5 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	// this is dummy code to test the deployment of the backend on render.com. It will be removed later.
 }

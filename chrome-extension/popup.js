@@ -6,12 +6,23 @@ let currentChart = null;
 // ----------------------------
 document.addEventListener('DOMContentLoaded', () => {
     // Check if user is already authenticated
-    chrome.storage.local.get(['authToken'], (result) => {
+    chrome.storage.local.get(['authToken', 'selectedRepo'], (result) => {
         if (result.authToken) {
             authToken = result.authToken;
             hideAuthShowMain();
             showLogoutButton();
             loadRepositories();
+
+            // Restore selected repo if exists
+            if (result.selectedRepo) {
+                setTimeout(() => {
+                    const select = document.getElementById("repoSelect");
+                    select.value = result.selectedRepo;
+                    if (select.value) {
+                        document.getElementById("sync").disabled = false;
+                    }
+                }, 500);
+            }
         }
     });
 });
@@ -20,9 +31,12 @@ document.addEventListener('DOMContentLoaded', () => {
 // LOGOUT FUNCTIONALITY
 // ----------------------------
 document.getElementById("logout").addEventListener("click", () => {
-    // Clear token from storage and memory
-    chrome.storage.local.remove(['authToken'], () => {
+    // Clear token and repo from storage and memory
+    chrome.storage.local.remove(['authToken', 'selectedRepo'], () => {
         authToken = "";
+
+        // Notify background script to stop auto-sync
+        chrome.runtime.sendMessage({ type: "CLEAR" });
 
         // Reset UI to login state
         document.getElementById("authSection").classList.remove("hidden");
@@ -106,6 +120,9 @@ window.addEventListener("message", (event) => {
 
         // Save token to Chrome storage for persistence
         chrome.storage.local.set({ authToken: authToken }, () => {
+            // Send token to background script for auto-sync
+            chrome.runtime.sendMessage({ type: "SET_TOKEN", token: authToken });
+
             showStatus("✅ Logged in successfully", "success");
             hideAuthShowMain();
             showLogoutButton();
@@ -150,7 +167,17 @@ function loadRepositories() {
 // ----------------------------
 document.getElementById("repoSelect").addEventListener("change", (e) => {
     const syncBtn = document.getElementById("sync");
-    syncBtn.disabled = !e.target.value;
+    const repoValue = e.target.value;
+
+    syncBtn.disabled = !repoValue;
+
+    if (repoValue) {
+        // Save selected repo to storage
+        chrome.storage.local.set({ selectedRepo: repoValue }, () => {
+            // Send repo to background script for auto-sync
+            chrome.runtime.sendMessage({ type: "SET_REPO", repo: repoValue });
+        });
+    }
 });
 
 // ----------------------------
