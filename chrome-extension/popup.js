@@ -1,12 +1,100 @@
 let authToken = "";
+let currentChart = null;
+
+// ----------------------------
+// INITIALIZE - CHECK FOR SAVED TOKEN
+// ----------------------------
+document.addEventListener('DOMContentLoaded', () => {
+    // Check if user is already authenticated
+    chrome.storage.local.get(['authToken'], (result) => {
+        if (result.authToken) {
+            authToken = result.authToken;
+            hideAuthShowMain();
+            showLogoutButton();
+            loadRepositories();
+        }
+    });
+});
+
+// ----------------------------
+// LOGOUT FUNCTIONALITY
+// ----------------------------
+document.getElementById("logout").addEventListener("click", () => {
+    // Clear token from storage and memory
+    chrome.storage.local.remove(['authToken'], () => {
+        authToken = "";
+
+        // Reset UI to login state
+        document.getElementById("authSection").classList.remove("hidden");
+        document.getElementById("mainContent").classList.remove("active");
+        document.getElementById("logout").classList.add("hidden");
+
+        // Reset repository select
+        document.getElementById("repoSelect").innerHTML = '<option value="">Choose a repository...</option>';
+
+        // Hide chart and stats
+        document.getElementById("chartSection").classList.add("hidden");
+        document.getElementById("statsSection").classList.add("hidden");
+
+        // Destroy chart if exists
+        if (currentChart) {
+            currentChart.destroy();
+            currentChart = null;
+        }
+
+        showStatus("👋 Logged out successfully", "info");
+    });
+});
+
+function showLogoutButton() {
+    document.getElementById("logout").classList.remove("hidden");
+}
+
+// ----------------------------
+// HELPER FUNCTIONS
+// ----------------------------
+function showStatus(message, type = 'info') {
+    const status = document.getElementById("status");
+    status.textContent = message;
+    status.className = `status-message ${type}`;
+
+    // Auto-hide success messages after 3 seconds
+    if (type === 'success') {
+        setTimeout(() => {
+            status.textContent = '';
+            status.className = 'status-message';
+        }, 3000);
+    }
+}
+
+function showLoading(message) {
+    const status = document.getElementById("status");
+    status.innerHTML = `<span class="spinner"></span>${message}`;
+    status.className = 'status-message loading';
+}
+
+function hideAuthShowMain() {
+    document.getElementById("authSection").classList.add("hidden");
+    document.getElementById("mainContent").classList.add("active");
+}
+
+function enableSyncButton() {
+    const syncBtn = document.getElementById("sync");
+    syncBtn.disabled = false;
+}
 
 // ----------------------------
 // LOGIN WITH GITHUB
 // ----------------------------
 document.getElementById("login").addEventListener("click", () => {
-    chrome.tabs.create({
-        url: "https://gitsense-ooly.onrender.com/auth/github"
-    });
+    showLoading("Opening GitHub login...");
+
+    // Use window.open() instead of chrome.tabs.create() so postMessage works
+    window.open(
+        "http://localhost:8080/auth/github",
+        "_blank",
+        "width=600,height=700"
+    );
 });
 
 // ----------------------------
@@ -16,10 +104,13 @@ window.addEventListener("message", (event) => {
     if (event.data.token) {
         authToken = event.data.token;
 
-        document.getElementById("status").innerText =
-            "✅ Logged in successfully";
-
-        loadRepositories();
+        // Save token to Chrome storage for persistence
+        chrome.storage.local.set({ authToken: authToken }, () => {
+            showStatus("✅ Logged in successfully", "success");
+            hideAuthShowMain();
+            showLogoutButton();
+            loadRepositories();
+        });
     }
 });
 
@@ -27,7 +118,10 @@ window.addEventListener("message", (event) => {
 // LOAD USER REPOSITORIES
 // ----------------------------
 function loadRepositories() {
-    fetch("https://gitsense-ooly.onrender.com/repos", {
+    showLoading("Loading repositories...");
+
+    // fetch("https://gitsense-ooly.onrender.com/repos", {
+    fetch("http://localhost:8080/repos", {
         headers: {
             "Authorization": authToken
         }
@@ -35,7 +129,7 @@ function loadRepositories() {
         .then(res => res.json())
         .then(repos => {
             const select = document.getElementById("repoSelect");
-            select.innerHTML = "";
+            select.innerHTML = '<option value="">Choose a repository...</option>';
 
             repos.forEach(repo => {
                 const option = document.createElement("option");
@@ -44,14 +138,20 @@ function loadRepositories() {
                 select.appendChild(option);
             });
 
-            document.getElementById("status").innerText =
-                "✅ Repositories loaded";
+            showStatus(`✅ Loaded ${repos.length} repositories`, "success");
         })
         .catch(() => {
-            document.getElementById("status").innerText =
-                "❌ Failed to load repositories";
+            showStatus("❌ Failed to load repositories", "error");
         });
 }
+
+// ----------------------------
+// ENABLE SYNC WHEN REPO SELECTED
+// ----------------------------
+document.getElementById("repoSelect").addEventListener("change", (e) => {
+    const syncBtn = document.getElementById("sync");
+    syncBtn.disabled = !e.target.value;
+});
 
 // ----------------------------
 // SYNC REPO + SAVE SNAPSHOT
@@ -60,79 +160,166 @@ document.getElementById("sync").addEventListener("click", () => {
     const repoValue = document.getElementById("repoSelect").value;
 
     if (!repoValue) {
-        alert("Please select a repository");
+        showStatus("⚠️ Please select a repository", "error");
         return;
     }
 
     const [owner, repo] = repoValue.split("/");
 
-    fetch(`https://gitsense-ooly.onrender.com/sync?owner=${owner}&repo=${repo}`, {
+    showLoading("Syncing repository...");
+
+    // fetch(`https://gitsense-ooly.onrender.com/sync?owner=${owner}&repo=${repo}`, {
+    fetch(`http://localhost:8080/sync?owner=${owner}&repo=${repo}`, {
         headers: {
             "Authorization": authToken
         }
     })
         .then(res => res.text())
         .then(msg => {
-            document.getElementById("status").innerText = msg;
-
             if (msg.includes("🔔")) {
+                showStatus("🔔 Significant activity detected!", "info");
+
                 chrome.notifications.create({
                     type: "basic",
                     iconUrl: "icon.png",
                     title: "GitSense Alert",
                     message: "Significant repo activity detected!"
                 });
+            } else {
+                showStatus("✅ Sync completed successfully", "success");
             }
 
-            loadHistory(repoValue);
+            loadHistory(repo);
+            updateLastSyncTime();
         })
-
         .catch(() => {
-            document.getElementById("status").innerText =
-                "❌ Sync failed";
+            showStatus("❌ Sync failed - please try again", "error");
         });
 });
+
+// ----------------------------
+// UPDATE LAST SYNC TIME
+// ----------------------------
+function updateLastSyncTime() {
+    const lastSyncElement = document.getElementById("lastSync");
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    lastSyncElement.textContent = timeString;
+
+    // Show stats section
+    document.getElementById("statsSection").classList.remove("hidden");
+}
 
 // ----------------------------
 // LOAD REPO HISTORY (GRAPH)
 // ----------------------------
 function loadHistory(repo) {
-    fetch(`https://gitsense-ooly.onrender.com/history?repo=${repo}`)
+    showLoading("Loading activity chart...");
+
+    // fetch(`https://gitsense-ooly.onrender.com/history?repo=${repo}`)
+    fetch(`http://localhost:8080/history?repo=${repo}`)
         .then(res => res.json())
         .then(data => {
-            const ctx = document.getElementById("chart").getContext("2d");
+            // Destroy previous chart if exists
+            if (currentChart) {
+                currentChart.destroy();
+            }
 
-            const labels = data.map(d => d.time);
+            const ctx = document.getElementById("chart").getContext("2d");
+            const labels = data.map(d => {
+                const date = new Date(d.time);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
             const scores = data.map(d => d.score);
 
-            new Chart(ctx, {
+            // Calculate average score
+            const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+            document.getElementById("activityScore").textContent = Math.round(avgScore);
+
+            currentChart = new Chart(ctx, {
                 type: "line",
                 data: {
                     labels: labels,
                     datasets: [
                         {
-                            label: "Repo Activity",
+                            label: "Activity Score",
                             data: scores,
-                            borderColor: "blue",
-                            backgroundColor: "rgba(0,0,255,0.1)",
+                            borderColor: "#667eea",
+                            backgroundColor: "rgba(102, 126, 234, 0.15)",
                             fill: true,
-                            tension: 0.3
+                            tension: 0.4,
+                            borderWidth: 3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: "#667eea",
+                            pointBorderColor: "#fff",
+                            pointBorderWidth: 2,
+                            pointHoverBackgroundColor: "#764ba2",
+                            pointHoverBorderColor: "#fff"
                         }
                     ]
                 },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Score: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
                     scales: {
                         y: {
                             min: 0,
-                            max: 100
+                            max: 100,
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#718096',
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#718096',
+                                font: {
+                                    size: 10
+                                },
+                                maxRotation: 0
+                            }
                         }
                     }
                 }
             });
+
+            // Show chart section
+            document.getElementById("chartSection").classList.remove("hidden");
+            document.getElementById("statsSection").classList.remove("hidden");
+
+            showStatus("📊 Chart loaded successfully", "success");
         })
         .catch(() => {
-            document.getElementById("status").innerText =
-                "❌ Failed to load history";
+            showStatus("❌ Failed to load activity history", "error");
         });
 }

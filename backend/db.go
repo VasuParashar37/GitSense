@@ -22,7 +22,7 @@ func InitDB() error {
 	CREATE TABLE IF NOT EXISTS file_activity (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		repo_name TEXT,
-		file_name TEXT,
+		file_name TEXT UNIQUE,
 		commit_count INTEGER,
 		last_modified DATETIME
 	);

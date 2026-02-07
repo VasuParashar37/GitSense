@@ -11,7 +11,8 @@
     ],
     "host_permissions": [
         "https://gitsense-ooly.onrender.com/*",
-        "https://github.com/*"
+        "https://github.com/*",
+        "http://localhost:8080/*"
     ],
     "action": {
         "default_popup": "popup.html"

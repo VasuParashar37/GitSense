@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 type GitHubCommit struct {
@@ -20,12 +21,14 @@ type GitHubFile struct {
 }
 
 func SyncFromGitHub(owner, repo, token string) error {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits", owner, repo)
+	// Limit to recent 30 commits to avoid timeouts
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits?per_page=30", owner, repo)
 
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -33,6 +36,8 @@ func SyncFromGitHub(owner, repo, token string) error {
 
 	var commits []GitHubCommit
 	json.NewDecoder(resp.Body).Decode(&commits)
+
+	fmt.Printf("📊 Found %d commits\n", len(commits))
 
 	for _, commit := range commits {
 		fileURL := fmt.Sprintf(
@@ -43,7 +48,7 @@ func SyncFromGitHub(owner, repo, token string) error {
 		req, _ := http.NewRequest("GET", fileURL, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
 			continue
 		}
@@ -55,8 +60,10 @@ func SyncFromGitHub(owner, repo, token string) error {
 		json.NewDecoder(resp.Body).Decode(&detail)
 		resp.Body.Close()
 
+		fmt.Printf("  Commit %s: %d files\n", commit.SHA[:7], len(detail.Files))
+
 		for _, f := range detail.Files {
-			DB.Exec(`
+			result, err := DB.Exec(`
 				INSERT INTO file_activity
 				(repo_name, file_name, commit_count, last_modified)
 				VALUES (?, ?, 1, ?)
@@ -65,6 +72,13 @@ func SyncFromGitHub(owner, repo, token string) error {
 					commit_count = commit_count + 1,
 					last_modified = ?
 			`, repo, f.Filename, commit.Commit.Author.Date, commit.Commit.Author.Date)
+
+			if err != nil {
+				fmt.Printf("    ❌ DB error for %s: %v\n", f.Filename, err)
+			} else {
+				rows, _ := result.RowsAffected()
+				fmt.Printf("    ✅ Saved %s (%d rows affected)\n", f.Filename, rows)
+			}
 		}
 	}
 
@@ -80,7 +94,8 @@ func getGitHubUsername(token string) string {
 	)
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return ""
 	}

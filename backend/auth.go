@@ -51,8 +51,14 @@ func githubCallback(w http.ResponseWriter, r *http.Request) {
 	var result map[string]string
 	json.NewDecoder(resp.Body).Decode(&result)
 
+	// 🔍 DEBUG: Print what GitHub returned
+	fmt.Println("GitHub OAuth Response:")
+	fmt.Printf("  Client ID: %s\n", githubClientID)
+	fmt.Printf("  Response: %+v\n", result)
+
 	token := result["access_token"]
 	if token == "" {
+		fmt.Println("❌ No access_token in response!")
 		http.Error(w, "No token received", 500)
 		return
 	}
@@ -77,7 +83,8 @@ func githubCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(
 		w,
 		r,
-		"https://gitsense-ooly.onrender.com/token?value=" + token,
+		// "https://gitsense-ooly.onrender.com/token?value=" + token,
+		"http://localhost:8080/token?value=" + token,
 		http.StatusTemporaryRedirect,
 	)
 }

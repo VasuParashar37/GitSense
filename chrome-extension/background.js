@@ -18,7 +18,8 @@ setInterval(() => {
 
   const [owner, repo] = selectedRepo.split("/");
 
-  fetch(` https://gitsense-ooly.onrender.com/sync?owner=${owner}&repo=${repo}`, {
+  // fetch(` https://gitsense-ooly.onrender.com/sync?owner=${owner}&repo=${repo}`, {
+  fetch(`http://localhost:8080/sync?owner=${owner}&repo=${repo}`, {
     headers: {
       Authorization: authToken
     }
