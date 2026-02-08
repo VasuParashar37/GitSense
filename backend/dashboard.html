@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitSense Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 32px;
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+
+        .header .repo-name {
+            font-size: 18px;
+            color: #718096;
+            font-weight: 500;
+        }
+
+        .header .back-btn {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .header .back-btn:hover {
+            background: #5568d3;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-card h3 {
+            font-size: 14px;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .stat-card .subtext {
+            font-size: 13px;
+            color: #a0aec0;
+            margin-top: 5px;
+        }
+
+        .section {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            font-size: 22px;
+            color: #2d3748;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section h2 .icon {
+            font-size: 24px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-top: 20px;
+        }
+
+        .timeline {
+            margin-top: 20px;
+        }
+
+        .timeline-item {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            border-left: 3px solid #e2e8f0;
+            margin-left: 10px;
+            transition: all 0.3s;
+        }
+
+        .timeline-item:hover {
+            border-left-color: #667eea;
+            background: #f7fafc;
+            border-radius: 8px;
+        }
+
+        .timeline-date {
+            min-width: 120px;
+            font-size: 14px;
+            color: #718096;
+            font-weight: 600;
+        }
+
+        .timeline-content {
+            flex: 1;
+        }
+
+        .timeline-author {
+            font-size: 14px;
+            color: #4a5568;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .timeline-message {
+            font-size: 15px;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+
+        .timeline-sha {
+            display: inline-block;
+            font-family: monospace;
+            font-size: 12px;
+            color: #667eea;
+            background: #edf2f7;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+        }
+
+        .file-list {
+            display: grid;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: #f7fafc;
+            border-radius: 8px;
+            border-left: 4px solid #e2e8f0;
+            transition: all 0.3s;
+        }
+
+        .file-item:hover {
+            background: #edf2f7;
+            transform: translateX(5px);
+        }
+
+        .file-item.active {
+            border-left-color: #48bb78;
+            background: #f0fff4;
+        }
+
+        .file-item.stable {
+            border-left-color: #ed8936;
+            background: #fffaf0;
+        }
+
+        .file-item.inactive {
+            border-left-color: #cbd5e0;
+            background: #f7fafc;
+        }
+
+        .file-name {
+            font-family: monospace;
+            font-size: 14px;
+            color: #2d3748;
+        }
+
+        .file-meta {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .file-commits {
+            font-size: 13px;
+            color: #718096;
+        }
+
+        .file-date {
+            font-size: 13px;
+            color: #a0aec0;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge.active {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .badge.stable {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .badge.inactive {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #718096;
+            font-size: 18px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #a0aec0;
+        }
+
+        .empty-state .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .timeline-item {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .chart-container {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>📊 GitSense Dashboard</h1>
+            <div class="repo-name" id="repoName">Loading repository...</div>
+            <a href="#" class="back-btn" onclick="window.close()">← Back to Extension</a>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Activity Score</h3>
+                <div class="value" id="activityScore">--</div>
+                <div class="subtext">Current repository health</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Commits</h3>
+                <div class="value" id="totalCommits">--</div>
+                <div class="subtext">Last 30 days</div>
+            </div>
+            <div class="stat-card">
+                <h3>Active Files</h3>
+                <div class="value" id="activeFiles">--</div>
+                <div class="subtext">Modified in last 7 days</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Files</h3>
+                <div class="value" id="totalFiles">--</div>
+                <div class="subtext">Being tracked</div>
+            </div>
+        </div>
+
+        <!-- Activity Over Time Chart -->
+        <div class="section">
+            <h2><span class="icon">📈</span> Activity Over Time</h2>
+            <div class="chart-container">
+                <canvas id="activityChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Commit Timeline -->
+        <div class="section">
+            <h2><span class="icon">📝</span> Commit Timeline</h2>
+            <div class="timeline" id="commitTimeline">
+                <div class="loading">Loading commits...</div>
+            </div>
+        </div>
+
+        <!-- File Activity -->
+        <div class="section">
+            <h2><span class="icon">📁</span> File Activity</h2>
+            <div class="file-list" id="fileList">
+                <div class="loading">Loading files...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get repo from URL params
+        const urlParams = new URLSearchParams(window.location.search);
+        const repo = urlParams.get('repo');
+
+        if (!repo) {
+            document.body.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><h2>No repository specified</h2><p>Please open the dashboard from the extension.</p></div>';
+        } else {
+            document.getElementById('repoName').textContent = repo;
+            loadDashboardData(repo);
+        }
+
+        async function loadDashboardData(repo) {
+            const repoName = repo.split('/')[1];
+
+            try {
+                // Load history for chart and stats
+                const historyRes = await fetch(`http://localhost:8080/history?repo=${repoName}`);
+                const history = await historyRes.json();
+
+                // Load commits
+                const commitsRes = await fetch(`http://localhost:8080/commits?repo=${repoName}`);
+                const commits = await commitsRes.json();
+
+                // Load file activity
+                const filesRes = await fetch(`http://localhost:8080/files?repo=${repoName}`);
+                const files = await filesRes.json();
+
+                // Update stats
+                updateStats(history, commits, files);
+
+                // Render chart
+                renderActivityChart(history);
+
+                // Render commit timeline
+                renderCommitTimeline(commits);
+
+                // Render file list
+                renderFileList(files);
+
+            } catch (error) {
+                console.error('Failed to load dashboard data:', error);
+            }
+        }
+
+        function updateStats(history, commits, files) {
+            // Activity score (average)
+            if (history && history.length > 0) {
+                const avgScore = history.reduce((sum, h) => sum + h.score, 0) / history.length;
+                document.getElementById('activityScore').textContent = Math.round(avgScore);
+            }
+
+            // Total commits
+            document.getElementById('totalCommits').textContent = commits ? commits.length : 0;
+
+            // Active files
+            if (files) {
+                const activeCount = files.filter(f => f.status === 'active').length;
+                document.getElementById('activeFiles').textContent = activeCount;
+                document.getElementById('totalFiles').textContent = files.length;
+            }
+        }
+
+        function renderActivityChart(history) {
+            if (!history || history.length === 0) return;
+
+            const ctx = document.getElementById('activityChart').getContext('2d');
+            const labels = history.map(h => {
+                const date = new Date(h.time);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+            const scores = history.map(h => h.score);
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Activity Score',
+                        data: scores,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 3,
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        pointBackgroundColor: '#667eea',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            cornerRadius: 8
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 100,
+                            ticks: {
+                                callback: function (value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderCommitTimeline(commits) {
+            const timeline = document.getElementById('commitTimeline');
+
+            if (!commits || commits.length === 0) {
+                timeline.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No commits found</p></div>';
+                return;
+            }
+
+            timeline.innerHTML = commits.map(commit => {
+                const date = new Date(commit.date);
+                const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+                return `
+                    <div class="timeline-item">
+                        <div class="timeline-date">${dateStr}<br>${timeStr}</div>
+                        <div class="timeline-content">
+                            <div class="timeline-author">${commit.author}</div>
+                            <div class="timeline-message">${commit.message}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderFileList(files) {
+            const fileList = document.getElementById('fileList');
+
+            if (!files || files.length === 0) {
+                fileList.innerHTML = '<div class="empty-state"><div class="icon">📂</div><p>No files found</p></div>';
+                return;
+            }
+
+            fileList.innerHTML = files.map(file => {
+                const date = new Date(file.last_modified);
+                const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+                return `
+                    <div class="file-item ${file.status}">
+                        <div class="file-name">${file.name}</div>
+                        <div class="file-meta">
+                            <span class="badge ${file.status}">${file.status.toUpperCase()}</span>
+                            <span class="file-commits">${file.commits} commits</span>
+                            <span class="file-date">Last: ${dateStr}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    </script>
+</body>
+
+</html>

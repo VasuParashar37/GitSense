@@ -106,4 +106,60 @@ func getRepoHistory(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(history)
 }
 
+func getFileActivity(w http.ResponseWriter, r *http.Request) {
+	repo := r.URL.Query().Get("repo")
+
+	if repo == "" {
+		http.Error(w, "Repo required", 400)
+		return
+	}
+
+	rows, err := DB.Query(`
+		SELECT file_name, commit_count, last_modified
+		FROM file_activity
+		WHERE repo_name = ?
+		ORDER BY last_modified DESC
+	`, repo)
+
+	if err != nil {
+		http.Error(w, "DB error", 500)
+		return
+	}
+	defer rows.Close()
+
+	var files []map[string]interface{}
+
+	for rows.Next() {
+		var fileName string
+		var commitCount int
+		var lastModified string
+
+		rows.Scan(&fileName, &commitCount, &lastModified)
+
+		// Calculate file status based on last modified date
+		t, _ := time.Parse("2006-01-02 15:04:05", lastModified)
+		days := time.Since(t).Hours() / 24
+
+		status := "inactive"
+		if days <= 7 {
+			status = "active"
+		} else if days <= 30 {
+			status = "stable"
+		}
+
+		files = append(files, map[string]interface{}{
+			"name":          fileName,
+			"commits":       commitCount,
+			"last_modified": lastModified,
+			"status":        status,
+		})
+	}
+
+	json.NewEncoder(w).Encode(files)
+}
+
+func dashboardHandler(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "dashboard.html")
+}
+
 

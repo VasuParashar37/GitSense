@@ -1,213 +1,9 @@
-// package main
-
-// import (
-// 	"fmt"
-// 	"net/http"
-// 	"time"
-// )
-
-// func syncHandler(w http.ResponseWriter, r *http.Request) {
-// 	owner := r.URL.Query().Get("owner")
-// 	repo := r.URL.Query().Get("repo")
-// 	token := r.Header.Get("Authorization")
-
-// 	fmt.Printf("🔄 Sync request: owner=%s, repo=%s, token=%s\n", owner, repo, token[:20]+"...")
-
-// 	if owner == "" || repo == "" || token == "" {
-// 		fmt.Println("❌ Missing parameters!")
-// 		http.Error(w, "Missing owner / repo / token", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	fmt.Println("📡 Fetching commits from GitHub...")
-// 	err := SyncFromGitHub(owner, repo, token)
-// 	if err != nil {
-// 		fmt.Printf("❌ Sync failed: %v\n", err)
-// 		http.Error(w, "Sync failed", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	fmt.Println("✅ Commits fetched successfully")
-
-// 	// Save repo under user
-// 	fmt.Println("💾 Saving repo under user...")
-// 	DB.Exec(`
-// 	INSERT INTO user_repos (user_id, repo_name, last_synced)
-// 	SELECT id, ?, CURRENT_TIMESTAMP
-// 	FROM users
-// 	WHERE access_token = ?
-// 	`, repo, token)
-
-// 	fmt.Println("📊 Creating snapshot...")
-
-// 	// Check if this is the first sync for this repo
-// 	var existingSnapshots int
-// 	DB.QueryRow(`SELECT COUNT(*) FROM repo_snapshots WHERE repo_name = ?`, repo).Scan(&existingSnapshots)
-
-// 	if existingSnapshots == 0 {
-// 		fmt.Println("🎯 First sync detected! Generating 30 days of historical snapshots...")
-// 		generateHistoricalSnapshots(repo, 30)
-// 	} else {
-// 		fmt.Println("📊 Creating today's snapshot...")
-// 		saveSnapshot(repo)
-// 	}
-
-// 	if shouldNotify(repo) {
-// 		fmt.Println("🔔 Significant activity detected!")
-// 		w.Write([]byte("🔔 Significant activity detected"))
-// 		return
-// 	}
-
-// 	fmt.Println("✅ Sync completed successfully")
-// 	w.Write([]byte("Synced successfully"))
-// }
-
-// func saveSnapshot(repo string) {
-// 	saveSnapshotForDate(repo, "")
-// }
-
-// func saveSnapshotForDate(repo string, referenceDate string) {
-// 	// If no date provided, use current time
-// 	dateClause := "julianday('now')"
-// 	if referenceDate != "" {
-// 		dateClause = fmt.Sprintf("julianday('%s')", referenceDate)
-// 	}
-
-// 	// First check how many rows exist
-// 	var count int
-// 	DB.QueryRow(`SELECT COUNT(*) FROM file_activity`).Scan(&count)
-
-// 	if referenceDate == "" {
-// 		fmt.Printf("  📊 Total file_activity records: %d\n", count)
-// 	}
-
-// 	query := fmt.Sprintf(`
-// 		SELECT
-// 			SUM(CASE WHEN %s - julianday(last_modified) <= 7 THEN 1 ELSE 0 END),
-// 			SUM(CASE WHEN %s - julianday(last_modified) BETWEEN 7 AND 30 THEN 1 ELSE 0 END),
-// 			SUM(CASE WHEN %s - julianday(last_modified) > 30 THEN 1 ELSE 0 END)
-// 		FROM file_activity
-// 	`, dateClause, dateClause, dateClause)
-
-// 	row := DB.QueryRow(query)
-
-// 	var active, stable, inactive int
-// 	row.Scan(&active, &stable, &inactive)
-
-// 	if referenceDate == "" {
-// 		fmt.Printf("  📊 Snapshot: active=%d, stable=%d, inactive=%d\n", active, stable, inactive)
-// 	}
-
-// 	total := active + stable + inactive
-// 	score := 0.0
-// 	if total > 0 {
-// 		score = (float64(active) / float64(total)) * 100
-// 	}
-
-// 	// Insert with custom timestamp if provided
-// 	if referenceDate != "" {
-// 		DB.Exec(`
-// 			INSERT INTO repo_snapshots
-// 			(repo_name, active_files, stable_files, inactive_files, activity_score, created_at)
-// 			VALUES (?, ?, ?, ?, ?, ?)
-// 		`, repo, active, stable, inactive, score, referenceDate)
-// 	} else {
-// 		DB.Exec(`
-// 			INSERT INTO repo_snapshots
-// 			(repo_name, active_files, stable_files, inactive_files, activity_score)
-// 			VALUES (?, ?, ?, ?, ?)
-// 		`, repo, active, stable, inactive, score)
-// 	}
-// }
-
-// func generateHistoricalSnapshots(repo string, days int) {
-// 	now := time.Now()
-// 	thirtyDaysAgo := now.AddDate(0, 0, -days)
-
-// 	// Get unique commit dates from the past 30 days (only days with actual commits)
-// 	rows, err := DB.Query(`
-// 		SELECT DISTINCT DATE(last_modified) as commit_date
-// 		FROM file_activity
-// 		WHERE julianday(last_modified) >= julianday(?)
-// 		ORDER BY commit_date ASC
-// 	`, thirtyDaysAgo.Format("2006-01-02"))
-
-// 	if err != nil {
-// 		fmt.Printf("❌ Error getting commit dates: %v\n", err)
-// 		return
-// 	}
-// 	defer rows.Close()
-
-// 	var commitDates []string
-// 	for rows.Next() {
-// 		var date string
-// 		rows.Scan(&date)
-// 		commitDates = append(commitDates, date)
-// 	}
-
-// 	fmt.Printf("📅 Found %d unique commit dates in past %d days\n", len(commitDates), days)
-
-// 	if len(commitDates) == 0 {
-// 		fmt.Println("⚠️  No commits found in the past 30 days")
-// 		return
-// 	}
-
-// 	// Generate snapshots only for dates with commits
-// 	for i, dateStr := range commitDates {
-// 		// Use end of day for snapshot calculation (captures all commits from that day)
-// 		snapshotDate := dateStr + " 23:59:59"
-// 		saveSnapshotForDate(repo, snapshotDate)
-
-// 		if (i+1)%10 == 0 {
-// 			fmt.Printf("  ✅ Generated %d snapshots so far\n", i+1)
-// 		}
-// 	}
-
-// 	fmt.Printf("  🎉 Generated %d historical snapshots (only on commit days)!\n", len(commitDates))
-// }
-
-// func shouldNotify(repo string) bool {
-// 	row := DB.QueryRow(`
-// 		SELECT activity_score
-// 		FROM repo_snapshots
-// 		WHERE repo_name = ?
-// 		ORDER BY created_at DESC
-// 		LIMIT 2
-// 	`, repo)
-
-// 	var latest, previous float64
-
-// 	err := row.Scan(&latest)
-// 	if err != nil {
-// 		return false
-// 	}
-
-// 	row = DB.QueryRow(`
-// 		SELECT activity_score
-// 		FROM repo_snapshots
-// 		WHERE repo_name = ?
-// 		ORDER BY created_at DESC
-// 		LIMIT 1 OFFSET 1
-// 	`, repo)
-
-// 	err = row.Scan(&previous)
-// 	if err != nil {
-// 		return false
-// 	}
-
-// 	// Notify only if change > 10%
-// 	diff := latest - previous
-// 	if diff < 0 {
-// 		diff = -diff
-// 	}
-
-// 	return diff >= 10
-// }
-
 package main
 
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -260,9 +56,13 @@ func syncHandler(w http.ResponseWriter, r *http.Request) {
 		repo,
 	).Scan(&snapshotCount)
 
+	fmt.Printf("📊 Snapshot count for '%s': %d\n", repo, snapshotCount)
+
 	if snapshotCount == 0 {
+		fmt.Println("🎯 First sync detected - generating historical snapshots...")
 		generateHistoricalSnapshots(repo, 30)
 	} else {
+		fmt.Println("📊 Creating today's snapshot...")
 		saveSnapshot(repo)
 	}
 
@@ -307,18 +107,48 @@ func saveSnapshotForDate(repo string, referenceDate string) {
 		score = (float64(active) / float64(total)) * 100
 	}
 
-	if referenceDate != "" {
-		DB.Exec(`
-			INSERT INTO repo_snapshots
-			(repo_name, active_files, stable_files, inactive_files, activity_score, created_at)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, repo, active, stable, inactive, score, referenceDate)
+	// Retry logic for SQLITE_BUSY errors
+	var err error
+	maxRetries := 5
+	retryDelay := 100 * time.Millisecond
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if referenceDate != "" {
+			_, err = DB.Exec(`
+				INSERT INTO repo_snapshots
+				(repo_name, active_files, stable_files, inactive_files, activity_score, created_at)
+				VALUES (?, ?, ?, ?, ?, ?)
+			`, repo, active, stable, inactive, score, referenceDate)
+		} else {
+			_, err = DB.Exec(`
+				INSERT INTO repo_snapshots
+				(repo_name, active_files, stable_files, inactive_files, activity_score)
+				VALUES (?, ?, ?, ?, ?)
+			`, repo, active, stable, inactive, score)
+		}
+
+		// If success, break
+		if err == nil {
+			break
+		}
+
+		// Check if it's a database locked error
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "database is locked") || strings.Contains(errMsg, "SQLITE_BUSY") {
+			// Database is busy, wait and retry
+			if attempt < maxRetries-1 {
+				time.Sleep(retryDelay)
+				retryDelay *= 2 // Exponential backoff
+			}
+		} else {
+			break // Non-busy error, don't retry
+		}
+	}
+
+	if err != nil {
+		fmt.Printf("❌ Failed to save snapshot for '%s' (date: %s): %v\n", repo, referenceDate, err)
 	} else {
-		DB.Exec(`
-			INSERT INTO repo_snapshots
-			(repo_name, active_files, stable_files, inactive_files, activity_score)
-			VALUES (?, ?, ?, ?, ?)
-		`, repo, active, stable, inactive, score)
+		fmt.Printf("✅ Saved snapshot for '%s' - Score: %.1f (date: %s)\n", repo, score, referenceDate)
 	}
 }
 
@@ -326,6 +156,7 @@ func saveSnapshotForDate(repo string, referenceDate string) {
 // HISTORICAL SNAPSHOTS (FROM COMMITS)
 // ----------------------------
 func generateHistoricalSnapshots(repo string, days int) {
+	fmt.Printf("📅 Generating historical snapshots for '%s' (past %d days)...\n", repo, days)
 	start := time.Now().AddDate(0, 0, -days)
 
 	rows, err := DB.Query(`
@@ -342,9 +173,13 @@ func generateHistoricalSnapshots(repo string, days int) {
 	}
 	defer rows.Close()
 
+	var dates []string
 	for rows.Next() {
 		var d string
 		rows.Scan(&d)
+		dates = append(dates, d)
 		saveSnapshotForDate(repo, d+" 23:59:59")
 	}
+
+	fmt.Printf("✅ Generated %d snapshots for dates: %v\n", len(dates), dates)
 }

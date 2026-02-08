@@ -55,6 +55,8 @@ func main() {
 	http.HandleFunc("/repos", getUserRepos)
 	http.HandleFunc("/history", getRepoHistory)
 	http.HandleFunc("/commits", getCommits)
+	http.HandleFunc("/files", getFileActivity)
+	http.HandleFunc("/dashboard", dashboardHandler)
 
 
 	port := os.Getenv("PORT")
