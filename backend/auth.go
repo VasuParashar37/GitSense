@@ -7,12 +7,9 @@ import (
 	"os"
 )
 
-var githubClientID = os.Getenv("GITHUB_CLIENT_ID")
-var githubClientSecret = os.Getenv("GITHUB_CLIENT_SECRET")
-
-
 // Step 1: Redirect to GitHub
 func githubLogin(w http.ResponseWriter, r *http.Request) {
+	githubClientID := os.Getenv("GITHUB_CLIENT_ID")
 	url := fmt.Sprintf(
 		"https://github.com/login/oauth/authorize?client_id=%s&scope=repo",
 		githubClientID,
@@ -22,6 +19,9 @@ func githubLogin(w http.ResponseWriter, r *http.Request) {
 
 // Step 2: Callback from GitHub
 func githubCallback(w http.ResponseWriter, r *http.Request) {
+	githubClientID := os.Getenv("GITHUB_CLIENT_ID")
+	githubClientSecret := os.Getenv("GITHUB_CLIENT_SECRET")
+
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		http.Error(w, "Missing code", 400)

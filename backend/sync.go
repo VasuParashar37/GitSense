@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"time"
 )
 
 func syncHandler(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +38,18 @@ func syncHandler(w http.ResponseWriter, r *http.Request) {
 	`, repo, token)
 
 	fmt.Println("📊 Creating snapshot...")
-	saveSnapshot(repo)
+
+	// Check if this is the first sync for this repo
+	var existingSnapshots int
+	DB.QueryRow(`SELECT COUNT(*) FROM repo_snapshots WHERE repo_name = ?`, repo).Scan(&existingSnapshots)
+
+	if existingSnapshots == 0 {
+		fmt.Println("🎯 First sync detected! Generating 30 days of historical snapshots...")
+		generateHistoricalSnapshots(repo, 30)
+	} else {
+		fmt.Println("📊 Creating today's snapshot...")
+		saveSnapshot(repo)
+	}
 
 	if shouldNotify(repo) {
 		fmt.Println("🔔 Significant activity detected!")
@@ -50,23 +62,40 @@ func syncHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func saveSnapshot(repo string) {
+	saveSnapshotForDate(repo, "")
+}
+
+func saveSnapshotForDate(repo string, referenceDate string) {
+	// If no date provided, use current time
+	dateClause := "julianday('now')"
+	if referenceDate != "" {
+		dateClause = fmt.Sprintf("julianday('%s')", referenceDate)
+	}
+
 	// First check how many rows exist
 	var count int
 	DB.QueryRow(`SELECT COUNT(*) FROM file_activity`).Scan(&count)
-	fmt.Printf("  📊 Total file_activity records: %d\n", count)
 
-	row := DB.QueryRow(`
+	if referenceDate == "" {
+		fmt.Printf("  📊 Total file_activity records: %d\n", count)
+	}
+
+	query := fmt.Sprintf(`
 		SELECT
-			SUM(CASE WHEN julianday('now') - julianday(last_modified) <= 7 THEN 1 ELSE 0 END),
-			SUM(CASE WHEN julianday('now') - julianday(last_modified) BETWEEN 7 AND 30 THEN 1 ELSE 0 END),
-			SUM(CASE WHEN julianday('now') - julianday(last_modified) > 30 THEN 1 ELSE 0 END)
+			SUM(CASE WHEN %s - julianday(last_modified) <= 7 THEN 1 ELSE 0 END),
+			SUM(CASE WHEN %s - julianday(last_modified) BETWEEN 7 AND 30 THEN 1 ELSE 0 END),
+			SUM(CASE WHEN %s - julianday(last_modified) > 30 THEN 1 ELSE 0 END)
 		FROM file_activity
-	`)
+	`, dateClause, dateClause, dateClause)
+
+	row := DB.QueryRow(query)
 
 	var active, stable, inactive int
 	row.Scan(&active, &stable, &inactive)
 
-	fmt.Printf("  📊 Snapshot: active=%d, stable=%d, inactive=%d\n", active, stable, inactive)
+	if referenceDate == "" {
+		fmt.Printf("  📊 Snapshot: active=%d, stable=%d, inactive=%d\n", active, stable, inactive)
+	}
 
 	total := active + stable + inactive
 	score := 0.0
@@ -74,11 +103,38 @@ func saveSnapshot(repo string) {
 		score = (float64(active) / float64(total)) * 100
 	}
 
-	DB.Exec(`
-		INSERT INTO repo_snapshots
-		(repo_name, active_files, stable_files, inactive_files, activity_score)
-		VALUES (?, ?, ?, ?, ?)
-	`, repo, active, stable, inactive, score)
+	// Insert with custom timestamp if provided
+	if referenceDate != "" {
+		DB.Exec(`
+			INSERT INTO repo_snapshots
+			(repo_name, active_files, stable_files, inactive_files, activity_score, created_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, repo, active, stable, inactive, score, referenceDate)
+	} else {
+		DB.Exec(`
+			INSERT INTO repo_snapshots
+			(repo_name, active_files, stable_files, inactive_files, activity_score)
+			VALUES (?, ?, ?, ?, ?)
+		`, repo, active, stable, inactive, score)
+	}
+}
+
+func generateHistoricalSnapshots(repo string, days int) {
+	now := time.Now()
+
+	// Generate snapshots for past N days
+	for i := days; i >= 0; i-- {
+		historicalDate := now.AddDate(0, 0, -i)
+		dateStr := historicalDate.Format("2006-01-02 15:04:05")
+
+		saveSnapshotForDate(repo, dateStr)
+
+		if i%10 == 0 {
+			fmt.Printf("  ✅ Generated snapshots up to %d days ago\n", i)
+		}
+	}
+
+	fmt.Printf("  🎉 Generated %d historical snapshots!\n", days+1)
 }
 
 func shouldNotify(repo string) bool {

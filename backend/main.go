@@ -4,11 +4,26 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// Load .env file (fails silently in production, which is fine)
+	err := godotenv.Load("../.env")
+	if err != nil {
+		fmt.Println("⚠️  No .env file found (this is normal in production)")
+	} else {
+		fmt.Println("✅ Loaded .env file")
+	}
 
-	err := InitDB()
+	// Debug: Check if env vars are loaded
+	clientID := os.Getenv("GITHUB_CLIENT_ID")
+	clientSecret := os.Getenv("GITHUB_CLIENT_SECRET")
+	fmt.Printf("🔑 GITHUB_CLIENT_ID: %s\n", clientID)
+	fmt.Printf("🔑 GITHUB_CLIENT_SECRET: %s...\n", clientSecret[:10])
+
+	err = InitDB()
 	if err != nil {
 		panic(err)
 	}
@@ -21,7 +36,7 @@ func main() {
 
 	// 🔐 OAuth routes
 	http.HandleFunc("/auth/github", githubLogin)
-	http.HandleFunc("/auth/callback/", githubCallback)
+	http.HandleFunc("/auth/callback", githubCallback)
 
 	// Sync repo
 	http.HandleFunc("/sync", syncHandler)
