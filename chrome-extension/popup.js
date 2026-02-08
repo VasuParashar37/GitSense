@@ -428,26 +428,32 @@ function loadCommits(repo) {
       .then(commits => {
         const list = document.getElementById("commitList");
         const section = document.getElementById("commitsSection");
-  
+
         list.innerHTML = "";
-  
+
         if (!commits || commits.length === 0) {
           list.innerHTML = "<li>No commits found</li>";
-          section.classList.remove("hidden"); // 👈 STILL show section
+          section.classList.remove("hidden");
           return;
         }
-  
-        commits.forEach(c => {
+
+        // Limit to 5 most recent commits
+        const recentCommits = commits.slice(0, 5);
+
+        recentCommits.forEach(c => {
           const li = document.createElement("li");
           li.textContent = `${c.date.split("T")[0]} – ${c.author}: ${c.message}`;
           list.appendChild(li);
         });
-  
-        // ✅ SHOW commits section AFTER data is rendered
+
+        // Show commits section
         section.classList.remove("hidden");
+
+        // Show "View Dashboard" button
+        document.getElementById("viewDashboard").style.display = "block";
       })
       .catch(() => {
         console.error("❌ Failed to load commits");
       });
   }
-  
+

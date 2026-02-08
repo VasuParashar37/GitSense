@@ -48,6 +48,14 @@
         </button>
       </div>
 
+      <!-- View Dashboard Button -->
+      <div class="section">
+        <button id="viewDashboard" class="btn-primary" style="width: 100%; display: none;">
+          <span class="btn-icon">📊</span>
+          View Full Dashboard
+        </button>
+      </div>
+
       <!-- Activity Chart -->
       <div id="chartSection" class="chart-section hidden">
         <div class="section-header">
@@ -71,10 +79,10 @@
         </div>
       </div>
 
-      <!-- ✅ NEW: Recent Commits Section -->
+      <!-- Recent Commits Section (5 most recent) -->
       <div id="commitsSection" class="section hidden">
         <div class="section-header">
-          <h4>Recent Commits</h4>
+          <h4>Recent 5 Commits</h4>
         </div>
         <ul id="commitList" class="commit-list">
           <!-- populated dynamically -->
