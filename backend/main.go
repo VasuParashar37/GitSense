@@ -54,6 +54,8 @@ func main() {
 
 	http.HandleFunc("/repos", getUserRepos)
 	http.HandleFunc("/history", getRepoHistory)
+	http.HandleFunc("/commits", getCommits)
+
 
 	port := os.Getenv("PORT")
 	if port == "" {

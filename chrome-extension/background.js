@@ -50,13 +50,11 @@ async function autoSync() {
 
     // Only notify if significant activity detected
     if (msg.includes("🔔")) {
-      console.log("🔔 Significant activity detected!");
-
       chrome.notifications.create({
         type: "basic",
         iconUrl: "icon.png",
-        title: "GitSense Alert",
-        message: `Significant activity detected in ${repo}!`
+        title: "GitSense – New Commit",
+        message: msg
       });
     } else {
       console.log("✅ Auto-sync completed (no significant activity)");

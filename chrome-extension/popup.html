@@ -2,81 +2,94 @@
 <html>
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitSense</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitSense</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h3>GitSense</h3>
-            <p class="subtitle">Track and analyze your repository activity</p>
-            <button id="logout" class="logout-btn hidden">🚪 Logout</button>
-        </div>
+  <div class="container">
 
-        <!-- Authentication Section -->
-        <div id="authSection" class="auth-section">
-            <p>Connect your GitHub account to get started</p>
-            <button id="login" class="btn-primary">
-                <span class="btn-icon">🔐</span>
-                Login with GitHub
-            </button>
-        </div>
-
-        <!-- Main Content (hidden until authenticated) -->
-        <div id="mainContent" class="main-content">
-            <!-- Repository Selection -->
-            <div class="section">
-                <label for="repoSelect" class="label">Select Repository</label>
-                <div class="select-wrapper">
-                    <select id="repoSelect" class="select-dropdown">
-                        <option value="">Choose a repository...</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Sync Button -->
-            <div class="section">
-                <button id="sync" class="btn-success" disabled>
-                    <span class="btn-icon">🔄</span>
-                    Sync Repository
-                </button>
-            </div>
-
-            <!-- Activity Chart -->
-            <div id="chartSection" class="chart-section hidden">
-                <div class="section-header">
-                    <h4>Repository Activity</h4>
-                    <span class="badge">Last 30 days</span>
-                </div>
-                <div class="chart-container">
-                    <canvas id="chart"></canvas>
-                </div>
-            </div>
-
-            <!-- Statistics Cards -->
-            <div id="statsSection" class="stats-section hidden">
-                <div class="stat-card">
-                    <div class="stat-label">Activity Score</div>
-                    <div class="stat-value" id="activityScore">--</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Last Sync</div>
-                    <div class="stat-value" id="lastSync">--</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Status Messages -->
-        <div id="status" class="status-message"></div>
+    <!-- Header -->
+    <div class="header">
+      <h3>GitSense</h3>
+      <p class="subtitle">Track and analyze your repository activity</p>
+      <button id="logout" class="logout-btn hidden">🚪 Logout</button>
     </div>
 
-    <script src="chart.js"></script>
-    <script src="popup.js"></script>
+    <!-- Authentication Section -->
+    <div id="authSection" class="auth-section">
+      <p>Connect your GitHub account to get started</p>
+      <button id="login" class="btn-primary">
+        <span class="btn-icon">🔐</span>
+        Login with GitHub
+      </button>
+    </div>
+
+    <!-- Main Content -->
+    <div id="mainContent" class="main-content">
+
+      <!-- Repository Selection -->
+      <div class="section">
+        <label for="repoSelect" class="label">Select Repository</label>
+        <div class="select-wrapper">
+          <select id="repoSelect" class="select-dropdown">
+            <option value="">Choose a repository...</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Sync Button -->
+      <div class="section">
+        <button id="sync" class="btn-success" disabled>
+          <span class="btn-icon">🔄</span>
+          Sync Repository
+        </button>
+      </div>
+
+      <!-- Activity Chart -->
+      <div id="chartSection" class="chart-section hidden">
+        <div class="section-header">
+          <h4>Repository Activity</h4>
+          <span class="badge">Last 30 days</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Statistics Cards -->
+      <div id="statsSection" class="stats-section hidden">
+        <div class="stat-card">
+          <div class="stat-label">Activity Score</div>
+          <div class="stat-value" id="activityScore">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Last Sync</div>
+          <div class="stat-value" id="lastSync">--</div>
+        </div>
+      </div>
+
+      <!-- ✅ NEW: Recent Commits Section -->
+      <div id="commitsSection" class="section hidden">
+        <div class="section-header">
+          <h4>Recent Commits</h4>
+        </div>
+        <ul id="commitList" class="commit-list">
+          <!-- populated dynamically -->
+        </ul>
+      </div>
+
+    </div>
+
+    <!-- Status Messages -->
+    <div id="status" class="status-message"></div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="chart.js"></script>
+  <script src="popup.js"></script>
 
 </body>
-
 </html>

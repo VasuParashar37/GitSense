@@ -5,24 +5,22 @@ let currentChart = null;
 // INITIALIZE - CHECK FOR SAVED TOKEN
 // ----------------------------
 document.addEventListener('DOMContentLoaded', () => {
+    console.log("🔍 Popup loaded, checking storage...");
+
     // Check if user is already authenticated
     chrome.storage.local.get(['authToken', 'selectedRepo'], (result) => {
+        console.log("📦 Storage result:", result);
+
         if (result.authToken) {
+            console.log("✅ Auth token found");
             authToken = result.authToken;
             hideAuthShowMain();
             showLogoutButton();
-            loadRepositories();
 
-            // Restore selected repo if exists
-            if (result.selectedRepo) {
-                setTimeout(() => {
-                    const select = document.getElementById("repoSelect");
-                    select.value = result.selectedRepo;
-                    if (select.value) {
-                        document.getElementById("sync").disabled = false;
-                    }
-                }, 500);
-            }
+            // Load repositories and restore selection after loading
+            loadRepositories(result.selectedRepo);
+        } else {
+            console.log("⚠️ No auth token found");
         }
     });
 });
@@ -134,7 +132,7 @@ window.addEventListener("message", (event) => {
 // ----------------------------
 // LOAD USER REPOSITORIES
 // ----------------------------
-function loadRepositories() {
+function loadRepositories(selectedRepo = null) {
     showLoading("Loading repositories...");
 
     // fetch("https://gitsense-ooly.onrender.com/repos", {
@@ -156,6 +154,24 @@ function loadRepositories() {
             });
 
             showStatus(`✅ Loaded ${repos.length} repositories`, "success");
+
+            // Restore selected repo after repositories are loaded
+            if (selectedRepo) {
+                console.log("📂 Restoring selected repo:", selectedRepo);
+                select.value = selectedRepo;
+                console.log("🔧 Set select value to:", select.value);
+
+                if (select.value) {
+                    document.getElementById("sync").disabled = false;
+
+                    // Check if repo has been synced before and load the chart
+                    const repoName = selectedRepo.split('/')[1];
+                    console.log("🔍 Checking for existing data for repo:", repoName);
+                    checkAndLoadExistingData(repoName);
+                } else {
+                    console.log("❌ Select value is empty after setting");
+                }
+            }
         })
         .catch(() => {
             showStatus("❌ Failed to load repositories", "error");
@@ -217,7 +233,9 @@ document.getElementById("sync").addEventListener("click", () => {
             }
 
             loadHistory(repo);
+            loadCommits(repo);
             updateLastSyncTime();
+
         })
         .catch(() => {
             showStatus("❌ Sync failed - please try again", "error");
@@ -241,6 +259,153 @@ function updateLastSyncTime() {
 }
 
 // ----------------------------
+// CHECK IF REPO HAS EXISTING DATA
+// ----------------------------
+function checkAndLoadExistingData(repo) {
+    console.log("📊 Fetching history for repo:", repo);
+
+    // Silently check if repo has been synced before
+    fetch(`http://localhost:8080/history?repo=${repo}`)
+        .then(res => {
+            console.log("📡 Response status:", res.status);
+            return res.json();
+        })
+        .then(data => {
+            console.log("📊 History data received:", data);
+            console.log("📊 Data length:", data ? data.length : 0);
+
+            if (data && data.length > 0) {
+                console.log("✅ Repo has been synced before - loading chart");
+
+                // Repo has been synced before - render the chart with existing data
+                renderChart(data);
+
+                // Load commits list
+                loadCommits(repo);
+
+                // Show the last sync time from the most recent snapshot
+                const lastSnapshot = data[data.length - 1];
+                const lastSyncElement = document.getElementById("lastSync");
+                const syncTime = new Date(lastSnapshot.time);
+                lastSyncElement.textContent = syncTime.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                // Show stats section
+                document.getElementById("statsSection").classList.remove("hidden");
+                console.log("✅ Chart loaded successfully");
+            } else {
+                console.log("⚠️ No data found - user needs to sync");
+            }
+            // If no data, user will need to click sync button (expected behavior)
+        })
+        .catch((err) => {
+            console.error("❌ Error checking existing data:", err);
+            // Silently fail - user will just need to sync manually
+        });
+}
+
+// ----------------------------
+// RENDER CHART WITH DATA
+// ----------------------------
+function renderChart(data) {
+    // Destroy previous chart if exists
+    if (currentChart) {
+        currentChart.destroy();
+    }
+
+    const ctx = document.getElementById("chart").getContext("2d");
+    const labels = data.map(d => {
+        const date = new Date(d.time);
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    });
+    const scores = data.map(d => d.score);
+
+    // Calculate average score
+    const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+    document.getElementById("activityScore").textContent = Math.round(avgScore);
+
+    currentChart = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: "Activity Score",
+                    data: scores,
+                    borderColor: "#667eea",
+                    backgroundColor: "rgba(102, 126, 234, 0.15)",
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: "#667eea",
+                    pointBorderColor: "#fff",
+                    pointBorderWidth: 2,
+                    pointHoverBackgroundColor: "#764ba2",
+                    pointHoverBorderColor: "#fff"
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    cornerRadius: 8,
+                    displayColors: false,
+                    callbacks: {
+                        label: function (context) {
+                            return `Score: ${context.parsed.y}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    min: 0,
+                    max: 100,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: '#718096',
+                        font: {
+                            size: 11
+                        }
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false,
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: '#718096',
+                        font: {
+                            size: 10
+                        },
+                        maxRotation: 0
+                    }
+                }
+            }
+        }
+    });
+
+    // Show chart section
+    document.getElementById("chartSection").classList.remove("hidden");
+    document.getElementById("statsSection").classList.remove("hidden");
+}
+
+// ----------------------------
 // LOAD REPO HISTORY (GRAPH)
 // ----------------------------
 function loadHistory(repo) {
@@ -250,103 +415,39 @@ function loadHistory(repo) {
     fetch(`http://localhost:8080/history?repo=${repo}`)
         .then(res => res.json())
         .then(data => {
-            // Destroy previous chart if exists
-            if (currentChart) {
-                currentChart.destroy();
-            }
-
-            const ctx = document.getElementById("chart").getContext("2d");
-            const labels = data.map(d => {
-                const date = new Date(d.time);
-                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            });
-            const scores = data.map(d => d.score);
-
-            // Calculate average score
-            const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-            document.getElementById("activityScore").textContent = Math.round(avgScore);
-
-            currentChart = new Chart(ctx, {
-                type: "line",
-                data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: "Activity Score",
-                            data: scores,
-                            borderColor: "#667eea",
-                            backgroundColor: "rgba(102, 126, 234, 0.15)",
-                            fill: true,
-                            tension: 0.4,
-                            borderWidth: 3,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            pointBackgroundColor: "#667eea",
-                            pointBorderColor: "#fff",
-                            pointBorderWidth: 2,
-                            pointHoverBackgroundColor: "#764ba2",
-                            pointHoverBorderColor: "#fff"
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        tooltip: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                            padding: 12,
-                            cornerRadius: 8,
-                            displayColors: false,
-                            callbacks: {
-                                label: function(context) {
-                                    return `Score: ${context.parsed.y}`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            min: 0,
-                            max: 100,
-                            grid: {
-                                color: 'rgba(0, 0, 0, 0.05)',
-                                drawBorder: false
-                            },
-                            ticks: {
-                                color: '#718096',
-                                font: {
-                                    size: 11
-                                }
-                            }
-                        },
-                        x: {
-                            grid: {
-                                display: false,
-                                drawBorder: false
-                            },
-                            ticks: {
-                                color: '#718096',
-                                font: {
-                                    size: 10
-                                },
-                                maxRotation: 0
-                            }
-                        }
-                    }
-                }
-            });
-
-            // Show chart section
-            document.getElementById("chartSection").classList.remove("hidden");
-            document.getElementById("statsSection").classList.remove("hidden");
-
+            renderChart(data);
             showStatus("📊 Chart loaded successfully", "success");
         })
         .catch(() => {
             showStatus("❌ Failed to load activity history", "error");
         });
 }
+function loadCommits(repo) {
+    fetch(`http://localhost:8080/commits?repo=${repo}`)
+      .then(res => res.json())
+      .then(commits => {
+        const list = document.getElementById("commitList");
+        const section = document.getElementById("commitsSection");
+  
+        list.innerHTML = "";
+  
+        if (!commits || commits.length === 0) {
+          list.innerHTML = "<li>No commits found</li>";
+          section.classList.remove("hidden"); // 👈 STILL show section
+          return;
+        }
+  
+        commits.forEach(c => {
+          const li = document.createElement("li");
+          li.textContent = `${c.date.split("T")[0]} – ${c.author}: ${c.message}`;
+          list.appendChild(li);
+        });
+  
+        // ✅ SHOW commits section AFTER data is rendered
+        section.classList.remove("hidden");
+      })
+      .catch(() => {
+        console.error("❌ Failed to load commits");
+      });
+  }
+  
