@@ -12,13 +12,21 @@ func getCommits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := DB.Query(`
-		SELECT author, message, commit_date
+	// Get optional limit parameter (default: all commits)
+	limit := r.URL.Query().Get("limit")
+
+	query := `
+		SELECT commit_sha, author, message, commit_date
 		FROM commits
 		WHERE repo_name = ?
 		ORDER BY commit_date DESC
-		LIMIT 20
-	`, repo)
+	`
+
+	if limit != "" {
+		query += " LIMIT " + limit
+	}
+
+	rows, err := DB.Query(query, repo)
 
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -27,16 +35,17 @@ func getCommits(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type CommitResponse struct {
-		Author string `json:"author"`
+		SHA     string `json:"sha"`
+		Author  string `json:"author"`
 		Message string `json:"message"`
-		Date string `json:"date"`
+		Date    string `json:"date"`
 	}
 
 	var commits []CommitResponse
 
 	for rows.Next() {
 		var c CommitResponse
-		rows.Scan(&c.Author, &c.Message, &c.Date)
+		rows.Scan(&c.SHA, &c.Author, &c.Message, &c.Date)
 		commits = append(commits, c)
 	}
 

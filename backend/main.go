@@ -58,6 +58,11 @@ func main() {
 	http.HandleFunc("/files", getFileActivity)
 	http.HandleFunc("/dashboard", dashboardHandler)
 
+	// New analytics endpoints
+	http.HandleFunc("/commits-per-day", getCommitsPerDay)
+	http.HandleFunc("/file-breakdown", getFileBreakdown)
+	http.HandleFunc("/contributor-distribution", getContributorDistribution)
+
 
 	port := os.Getenv("PORT")
 	if port == "" {

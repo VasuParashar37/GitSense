@@ -4,8 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitSense Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>GitSense Dashboard - Deep Investigation Mode</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -21,7 +22,7 @@
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
         }
 
@@ -31,34 +32,56 @@
             padding: 30px;
             margin-bottom: 30px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        .header h1 {
+        .header-content h1 {
             font-size: 32px;
             color: #2d3748;
             margin-bottom: 8px;
         }
 
-        .header .repo-name {
+        .header-content .repo-name {
             font-size: 18px;
             color: #718096;
             font-weight: 500;
         }
 
-        .header .back-btn {
-            display: inline-block;
-            margin-top: 15px;
-            padding: 10px 20px;
-            background: #667eea;
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: background 0.3s;
+        .header-actions {
+            display: flex;
+            gap: 10px;
         }
 
-        .header .back-btn:hover {
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
             background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #38a169;
+            transform: translateY(-2px);
         }
 
         .stats-grid {
@@ -122,58 +145,80 @@
             margin-top: 20px;
         }
 
-        .timeline {
+        .table-container {
+            overflow-x: auto;
             margin-top: 20px;
         }
 
-        .timeline-item {
-            display: flex;
-            gap: 20px;
-            padding: 20px;
-            border-left: 3px solid #e2e8f0;
-            margin-left: 10px;
-            transition: all 0.3s;
+        table {
+            width: 100%;
+            border-collapse: collapse;
         }
 
-        .timeline-item:hover {
-            border-left-color: #667eea;
+        thead {
             background: #f7fafc;
-            border-radius: 8px;
         }
 
-        .timeline-date {
-            min-width: 120px;
-            font-size: 14px;
-            color: #718096;
-            font-weight: 600;
-        }
-
-        .timeline-content {
-            flex: 1;
-        }
-
-        .timeline-author {
-            font-size: 14px;
+        th {
+            text-align: left;
+            padding: 15px;
+            font-size: 13px;
             color: #4a5568;
             font-weight: 600;
-            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
-        .timeline-message {
-            font-size: 15px;
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #e2e8f0;
             color: #2d3748;
-            line-height: 1.6;
         }
 
-        .timeline-sha {
-            display: inline-block;
+        tbody tr:hover {
+            background: #f7fafc;
+        }
+
+        .commit-sha {
             font-family: monospace;
             font-size: 12px;
             color: #667eea;
             background: #edf2f7;
-            padding: 2px 8px;
+            padding: 4px 8px;
             border-radius: 4px;
-            margin-top: 8px;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .pagination button {
+            padding: 8px 16px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .pagination button:hover:not(:disabled) {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pagination .page-info {
+            font-size: 14px;
+            color: #718096;
         }
 
         .file-list {
@@ -225,16 +270,6 @@
             align-items: center;
         }
 
-        .file-commits {
-            font-size: 13px;
-            color: #718096;
-        }
-
-        .file-date {
-            font-size: 13px;
-            color: #a0aec0;
-        }
-
         .badge {
             display: inline-block;
             padding: 4px 12px;
@@ -249,8 +284,8 @@
         }
 
         .badge.stable {
-            background: #fed7d7;
-            color: #742a2a;
+            background: #feebc8;
+            color: #7c2d12;
         }
 
         .badge.inactive {
@@ -276,18 +311,64 @@
             margin-bottom: 20px;
         }
 
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: #718096;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab:hover {
+            color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
         @media (max-width: 768px) {
             .stats-grid {
                 grid-template-columns: 1fr;
             }
 
-            .timeline-item {
-                flex-direction: column;
-                gap: 10px;
+            .grid-2 {
+                grid-template-columns: 1fr;
             }
 
             .chart-container {
                 height: 300px;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 20px;
             }
         }
     </style>
@@ -297,9 +378,15 @@
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1>📊 GitSense Dashboard</h1>
-            <div class="repo-name" id="repoName">Loading repository...</div>
-            <a href="#" class="back-btn" onclick="window.close()">← Back to Extension</a>
+            <div class="header-content">
+                <h1>📊 GitSense Dashboard</h1>
+                <div class="repo-name" id="repoName">Loading repository...</div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-success" onclick="exportData('json')">📥 Export JSON</button>
+                <button class="btn btn-success" onclick="exportData('csv')">📥 Export CSV</button>
+                <button class="btn btn-primary" onclick="window.close()">← Back</button>
+            </div>
         </div>
 
         <!-- Stats Grid -->
@@ -312,7 +399,7 @@
             <div class="stat-card">
                 <h3>Total Commits</h3>
                 <div class="value" id="totalCommits">--</div>
-                <div class="subtext">Last 30 days</div>
+                <div class="subtext">All time</div>
             </div>
             <div class="stat-card">
                 <h3>Active Files</h3>
@@ -326,32 +413,95 @@
             </div>
         </div>
 
-        <!-- Activity Over Time Chart -->
+        <!-- Detailed Commit Timeline -->
         <div class="section">
-            <h2><span class="icon">📈</span> Activity Over Time</h2>
+            <h2><span class="icon">📈</span> Detailed Commit Timeline (Zoomable)</h2>
+            <p style="color: #718096; font-size: 14px; margin-bottom: 10px;">
+                Scroll to zoom, drag to pan. See exact commit timestamps and activity spikes.
+            </p>
             <div class="chart-container">
-                <canvas id="activityChart"></canvas>
+                <canvas id="timelineChart"></canvas>
             </div>
         </div>
 
-        <!-- Commit Timeline -->
-        <div class="section">
-            <h2><span class="icon">📝</span> Commit Timeline</h2>
-            <div class="timeline" id="commitTimeline">
-                <div class="loading">Loading commits...</div>
+        <!-- Activity Trends -->
+        <div class="grid-2">
+            <div class="section">
+                <h2><span class="icon">📊</span> Commits Per Day</h2>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="commitsPerDayChart"></canvas>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span class="icon">🥧</span> Contribution Distribution</h2>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="contributionChart"></canvas>
+                </div>
             </div>
         </div>
 
-        <!-- File Activity -->
+        <!-- Full Commit History Table -->
         <div class="section">
-            <h2><span class="icon">📁</span> File Activity</h2>
-            <div class="file-list" id="fileList">
-                <div class="loading">Loading files...</div>
+            <h2><span class="icon">📝</span> Full Commit History</h2>
+            <div class="table-container">
+                <table id="commitTable">
+                    <thead>
+                        <tr>
+                            <th>SHA</th>
+                            <th>Time</th>
+                            <th>Author</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="commitTableBody">
+                        <tr><td colspan="4" class="loading">Loading commits...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination" id="pagination">
+                <button id="prevPage" onclick="changePage(-1)">← Previous</button>
+                <span class="page-info" id="pageInfo">Page 1</span>
+                <button id="nextPage" onclick="changePage(1)">Next →</button>
+            </div>
+        </div>
+
+        <!-- File Activity Breakdown -->
+        <div class="section">
+            <h2><span class="icon">📁</span> File Activity Breakdown</h2>
+
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('mostModified')">🔥 Most Modified</button>
+                <button class="tab" onclick="switchTab('inactive')">📉 Inactive (&gt;30 days)</button>
+                <button class="tab" onclick="switchTab('frequentlyUpdated')">📈 Frequently Updated</button>
+            </div>
+
+            <div id="mostModified" class="tab-content active">
+                <div class="file-list" id="mostModifiedList">
+                    <div class="loading">Loading files...</div>
+                </div>
+            </div>
+
+            <div id="inactive" class="tab-content">
+                <div class="file-list" id="inactiveList">
+                    <div class="loading">Loading files...</div>
+                </div>
+            </div>
+
+            <div id="frequentlyUpdated" class="tab-content">
+                <div class="file-list" id="frequentlyUpdatedList">
+                    <div class="loading">Loading files...</div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
+        let allCommits = [];
+        let currentPage = 1;
+        const commitsPerPage = 20;
+        let allData = {};
+
         // Get repo from URL params
         const urlParams = new URLSearchParams(window.location.search);
         const repo = urlParams.get('repo');
@@ -367,29 +517,46 @@
             const repoName = repo.split('/')[1];
 
             try {
-                // Load history for chart and stats
-                const historyRes = await fetch(`http://localhost:8080/history?repo=${repoName}`);
+                // Load all data in parallel
+                const [historyRes, commitsRes, filesRes, commitsPerDayRes, fileBreakdownRes, contributorsRes] = await Promise.all([
+                    fetch(`http://localhost:8080/history?repo=${repoName}`),
+                    fetch(`http://localhost:8080/commits?repo=${repoName}`),
+                    fetch(`http://localhost:8080/files?repo=${repoName}`),
+                    fetch(`http://localhost:8080/commits-per-day?repo=${repoName}`),
+                    fetch(`http://localhost:8080/file-breakdown?repo=${repoName}`),
+                    fetch(`http://localhost:8080/contributor-distribution?repo=${repoName}`)
+                ]);
+
                 const history = await historyRes.json();
-
-                // Load commits
-                const commitsRes = await fetch(`http://localhost:8080/commits?repo=${repoName}`);
-                const commits = await commitsRes.json();
-
-                // Load file activity
-                const filesRes = await fetch(`http://localhost:8080/files?repo=${repoName}`);
+                allCommits = await commitsRes.json();
                 const files = await filesRes.json();
+                const commitsPerDay = await commitsPerDayRes.json();
+                const fileBreakdown = await fileBreakdownRes.json();
+                const contributors = await contributorsRes.json();
 
-                // Update stats
-                updateStats(history, commits, files);
+                // Store all data for export
+                allData = {
+                    repository: repo,
+                    timestamp: new Date().toISOString(),
+                    stats: {
+                        totalCommits: allCommits.length,
+                        totalFiles: files.length,
+                        activeFiles: files.filter(f => f.status === 'active').length
+                    },
+                    commits: allCommits,
+                    files: files,
+                    commitsPerDay: commitsPerDay,
+                    fileBreakdown: fileBreakdown,
+                    contributors: contributors
+                };
 
-                // Render chart
-                renderActivityChart(history);
-
-                // Render commit timeline
-                renderCommitTimeline(commits);
-
-                // Render file list
-                renderFileList(files);
+                // Update UI
+                updateStats(history, allCommits, files);
+                renderDetailedTimeline(allCommits);
+                renderCommitsPerDay(commitsPerDay);
+                renderContributionDistribution(contributors);
+                renderCommitTable(currentPage);
+                renderFileBreakdown(fileBreakdown);
 
             } catch (error) {
                 console.error('Failed to load dashboard data:', error);
@@ -414,33 +581,44 @@
             }
         }
 
-        function renderActivityChart(history) {
-            if (!history || history.length === 0) return;
+        function renderDetailedTimeline(commits) {
+            if (!commits || commits.length === 0) return;
 
-            const ctx = document.getElementById('activityChart').getContext('2d');
-            const labels = history.map(h => {
-                const date = new Date(h.time);
-                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const ctx = document.getElementById('timelineChart').getContext('2d');
+
+            // Prepare data points with exact timestamps
+            const dataPoints = commits.map(c => ({
+                x: new Date(c.date).getTime(),
+                y: 1,
+                author: c.author,
+                message: c.message,
+                sha: c.sha
+            }));
+
+            // Aggregate by hour for better visualization
+            const hourlyData = {};
+            dataPoints.forEach(point => {
+                const hour = new Date(point.x).setMinutes(0, 0, 0);
+                if (!hourlyData[hour]) {
+                    hourlyData[hour] = { x: hour, y: 0, commits: [] };
+                }
+                hourlyData[hour].y++;
+                hourlyData[hour].commits.push(point);
             });
-            const scores = history.map(h => h.score);
+
+            const aggregatedData = Object.values(hourlyData);
 
             new Chart(ctx, {
-                type: 'line',
+                type: 'scatter',
                 data: {
-                    labels: labels,
                     datasets: [{
-                        label: 'Activity Score',
-                        data: scores,
+                        label: 'Commit Activity',
+                        data: aggregatedData,
+                        backgroundColor: 'rgba(102, 126, 234, 0.6)',
                         borderColor: '#667eea',
-                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                        fill: true,
-                        tension: 0.4,
-                        borderWidth: 3,
+                        borderWidth: 2,
                         pointRadius: 6,
-                        pointHoverRadius: 8,
-                        pointBackgroundColor: '#667eea',
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2
+                        pointHoverRadius: 8
                     }]
                 },
                 options: {
@@ -451,18 +629,135 @@
                             display: false
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                            padding: 12,
-                            cornerRadius: 8
+                            callbacks: {
+                                title: (items) => {
+                                    return new Date(items[0].parsed.x).toLocaleString();
+                                },
+                                label: (item) => {
+                                    return `${item.parsed.y} commit(s)`;
+                                }
+                            }
+                        },
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true,
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'x',
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Timeline'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Commits'
+                            },
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderCommitsPerDay(data) {
+            if (!data || data.length === 0) return;
+
+            const ctx = document.getElementById('commitsPerDayChart').getContext('2d');
+            const labels = data.reverse().map(d => {
+                const date = new Date(d.date);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+            const counts = data.map(d => d.count);
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Commits',
+                        data: counts,
+                        backgroundColor: 'rgba(72, 187, 120, 0.6)',
+                        borderColor: '#48bb78',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
                         }
                     },
                     scales: {
                         y: {
-                            min: 0,
-                            max: 100,
+                            beginAtZero: true,
                             ticks: {
-                                callback: function (value) {
-                                    return value + '%';
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderContributionDistribution(contributors) {
+            if (!contributors || contributors.length === 0) return;
+
+            const ctx = document.getElementById('contributionChart').getContext('2d');
+            const labels = contributors.map(c => c.author);
+            const data = contributors.map(c => c.commits);
+
+            const colors = [
+                '#667eea', '#764ba2', '#f093fb', '#4facfe',
+                '#43e97b', '#fa709a', '#fee140', '#30cfd0'
+            ];
+
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (item) => {
+                                    const total = data.reduce((a, b) => a + b, 0);
+                                    const percent = ((item.parsed / total) * 100).toFixed(1);
+                                    return `${item.label}: ${item.parsed} commits (${percent}%)`;
                                 }
                             }
                         }
@@ -471,40 +766,62 @@
             });
         }
 
-        function renderCommitTimeline(commits) {
-            const timeline = document.getElementById('commitTimeline');
+        function renderCommitTable(page) {
+            const tbody = document.getElementById('commitTableBody');
+            const start = (page - 1) * commitsPerPage;
+            const end = start + commitsPerPage;
+            const pageCommits = allCommits.slice(start, end);
 
-            if (!commits || commits.length === 0) {
-                timeline.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No commits found</p></div>';
+            if (pageCommits.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No commits found</td></tr>';
                 return;
             }
 
-            timeline.innerHTML = commits.map(commit => {
+            tbody.innerHTML = pageCommits.map(commit => {
                 const date = new Date(commit.date);
                 const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                 const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
                 return `
-                    <div class="timeline-item">
-                        <div class="timeline-date">${dateStr}<br>${timeStr}</div>
-                        <div class="timeline-content">
-                            <div class="timeline-author">${commit.author}</div>
-                            <div class="timeline-message">${commit.message}</div>
-                        </div>
-                    </div>
+                    <tr>
+                        <td><span class="commit-sha">${commit.sha ? commit.sha.substring(0, 7) : 'N/A'}</span></td>
+                        <td>${dateStr} ${timeStr}</td>
+                        <td>${commit.author}</td>
+                        <td>${commit.message}</td>
+                    </tr>
                 `;
             }).join('');
+
+            // Update pagination
+            const totalPages = Math.ceil(allCommits.length / commitsPerPage);
+            document.getElementById('pageInfo').textContent = `Page ${page} of ${totalPages}`;
+            document.getElementById('prevPage').disabled = page === 1;
+            document.getElementById('nextPage').disabled = page >= totalPages;
         }
 
-        function renderFileList(files) {
-            const fileList = document.getElementById('fileList');
+        function changePage(delta) {
+            const totalPages = Math.ceil(allCommits.length / commitsPerPage);
+            currentPage += delta;
+            if (currentPage < 1) currentPage = 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+            renderCommitTable(currentPage);
+        }
+
+        function renderFileBreakdown(breakdown) {
+            renderFileList('mostModifiedList', breakdown.most_modified || []);
+            renderFileList('inactiveList', breakdown.inactive || []);
+            renderFileList('frequentlyUpdatedList', breakdown.frequently_updated || []);
+        }
+
+        function renderFileList(elementId, files) {
+            const container = document.getElementById(elementId);
 
             if (!files || files.length === 0) {
-                fileList.innerHTML = '<div class="empty-state"><div class="icon">📂</div><p>No files found</p></div>';
+                container.innerHTML = '<div class="empty-state"><div class="icon">📂</div><p>No files found</p></div>';
                 return;
             }
 
-            fileList.innerHTML = files.map(file => {
+            container.innerHTML = files.map(file => {
                 const date = new Date(file.last_modified);
                 const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
@@ -513,12 +830,68 @@
                         <div class="file-name">${file.name}</div>
                         <div class="file-meta">
                             <span class="badge ${file.status}">${file.status.toUpperCase()}</span>
-                            <span class="file-commits">${file.commits} commits</span>
-                            <span class="file-date">Last: ${dateStr}</span>
+                            <span>${file.commit_count} commits</span>
+                            <span>Last: ${dateStr}</span>
                         </div>
                     </div>
                 `;
             }).join('');
+        }
+
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+
+        function exportData(format) {
+            const repoName = repo.split('/')[1];
+            const filename = `gitsense-${repoName}-${new Date().toISOString().split('T')[0]}`;
+
+            if (format === 'json') {
+                const json = JSON.stringify(allData, null, 2);
+                downloadFile(json, `${filename}.json`, 'application/json');
+            } else if (format === 'csv') {
+                // Convert commits to CSV
+                const headers = ['SHA', 'Date', 'Author', 'Message'];
+                const rows = allCommits.map(c => [
+                    c.sha || '',
+                    c.date,
+                    c.author,
+                    c.message.replace(/"/g, '""') // Escape quotes
+                ]);
+
+                const csv = [
+                    headers.join(','),
+                    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+                ].join('\n');
+
+                downloadFile(csv, `${filename}.csv`, 'text/csv');
+            }
+        }
+
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
     </script>
 </body>

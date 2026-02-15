@@ -243,6 +243,22 @@ document.getElementById("sync").addEventListener("click", () => {
 });
 
 // ----------------------------
+// VIEW FULL DASHBOARD
+// ----------------------------
+document.getElementById("viewDashboard").addEventListener("click", () => {
+    const repoValue = document.getElementById("repoSelect").value;
+
+    if (!repoValue) {
+        showStatus("⚠️ Please select a repository", "error");
+        return;
+    }
+
+    // Open dashboard in new tab with repo parameter
+    const dashboardUrl = `http://localhost:8080/dashboard?repo=${encodeURIComponent(repoValue)}`;
+    chrome.tabs.create({ url: dashboardUrl });
+});
+
+// ----------------------------
 // UPDATE LAST SYNC TIME
 // ----------------------------
 function updateLastSyncTime() {

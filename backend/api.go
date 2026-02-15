@@ -162,4 +162,172 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "dashboard.html")
 }
 
+// ----------------------------
+// COMMITS PER DAY AGGREGATION
+// ----------------------------
+func getCommitsPerDay(w http.ResponseWriter, r *http.Request) {
+	repo := r.URL.Query().Get("repo")
+
+	if repo == "" {
+		http.Error(w, "Repo required", 400)
+		return
+	}
+
+	rows, err := DB.Query(`
+		SELECT DATE(commit_date) as day, COUNT(*) as count
+		FROM commits
+		WHERE repo_name = ?
+		GROUP BY DATE(commit_date)
+		ORDER BY day DESC
+		LIMIT 30
+	`, repo)
+
+	if err != nil {
+		http.Error(w, "DB error", 500)
+		return
+	}
+	defer rows.Close()
+
+	var data []map[string]interface{}
+
+	for rows.Next() {
+		var day string
+		var count int
+
+		rows.Scan(&day, &count)
+
+		data = append(data, map[string]interface{}{
+			"date":  day,
+			"count": count,
+		})
+	}
+
+	json.NewEncoder(w).Encode(data)
+}
+
+// ----------------------------
+// FILE BREAKDOWN (most modified, inactive, frequently updated)
+// ----------------------------
+func getFileBreakdown(w http.ResponseWriter, r *http.Request) {
+	repo := r.URL.Query().Get("repo")
+
+	if repo == "" {
+		http.Error(w, "Repo required", 400)
+		return
+	}
+
+	rows, err := DB.Query(`
+		SELECT file_name, commit_count, last_modified
+		FROM file_activity
+		WHERE repo_name = ?
+		ORDER BY commit_count DESC
+	`, repo)
+
+	if err != nil {
+		http.Error(w, "DB error", 500)
+		return
+	}
+	defer rows.Close()
+
+	type FileBreakdown struct {
+		Name         string `json:"name"`
+		CommitCount  int    `json:"commit_count"`
+		LastModified string `json:"last_modified"`
+		Status       string `json:"status"`
+	}
+
+	var mostModified []FileBreakdown
+	var inactive []FileBreakdown
+	var frequentlyUpdated []FileBreakdown
+	var allFiles []FileBreakdown
+
+	for rows.Next() {
+		var f FileBreakdown
+		rows.Scan(&f.Name, &f.CommitCount, &f.LastModified)
+
+		// Calculate status based on last modified date
+		t, _ := time.Parse("2006-01-02 15:04:05", f.LastModified)
+		days := time.Since(t).Hours() / 24
+
+		if days <= 7 {
+			f.Status = "active"
+		} else if days <= 30 {
+			f.Status = "stable"
+		} else {
+			f.Status = "inactive"
+		}
+
+		allFiles = append(allFiles, f)
+	}
+
+	// Get top 10 most modified files
+	for i := 0; i < len(allFiles) && i < 10; i++ {
+		mostModified = append(mostModified, allFiles[i])
+	}
+
+	// Get inactive files (>30 days)
+	for _, f := range allFiles {
+		if f.Status == "inactive" {
+			inactive = append(inactive, f)
+		}
+	}
+
+	// Get frequently updated files (active with high commit count)
+	for _, f := range allFiles {
+		if f.Status == "active" && f.CommitCount >= 3 {
+			frequentlyUpdated = append(frequentlyUpdated, f)
+		}
+	}
+
+	response := map[string]interface{}{
+		"most_modified":       mostModified,
+		"inactive":            inactive,
+		"frequently_updated":  frequentlyUpdated,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// ----------------------------
+// CONTRIBUTOR DISTRIBUTION
+// ----------------------------
+func getContributorDistribution(w http.ResponseWriter, r *http.Request) {
+	repo := r.URL.Query().Get("repo")
+
+	if repo == "" {
+		http.Error(w, "Repo required", 400)
+		return
+	}
+
+	rows, err := DB.Query(`
+		SELECT author, COUNT(*) as commit_count
+		FROM commits
+		WHERE repo_name = ?
+		GROUP BY author
+		ORDER BY commit_count DESC
+	`, repo)
+
+	if err != nil {
+		http.Error(w, "DB error", 500)
+		return
+	}
+	defer rows.Close()
+
+	var contributors []map[string]interface{}
+
+	for rows.Next() {
+		var author string
+		var count int
+
+		rows.Scan(&author, &count)
+
+		contributors = append(contributors, map[string]interface{}{
+			"author": author,
+			"commits": count,
+		})
+	}
+
+	json.NewEncoder(w).Encode(contributors)
+}
+
 
