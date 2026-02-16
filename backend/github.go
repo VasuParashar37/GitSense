@@ -110,7 +110,11 @@ func SyncFromGitHub(owner, repo, token string) error {
 				ON CONFLICT(repo_name, file_name)
 				DO UPDATE SET
 					commit_count = commit_count + 1,
-					last_modified = excluded.last_modified
+					last_modified = CASE
+						WHEN excluded.last_modified > last_modified
+						THEN excluded.last_modified
+						ELSE last_modified
+					END
 			`,
 				repo,
 				f.Filename,

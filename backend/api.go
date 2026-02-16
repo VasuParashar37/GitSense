@@ -25,7 +25,7 @@ func getProjectSummary(w http.ResponseWriter, r *http.Request) {
 		var lastModified string
 		rows.Scan(&lastModified)
 
-		t, err := time.Parse("2006-01-02 15:04:05", lastModified)
+		t, err := time.Parse(time.RFC3339, lastModified)
 		if err != nil {
 			continue
 		}
@@ -137,7 +137,7 @@ func getFileActivity(w http.ResponseWriter, r *http.Request) {
 		rows.Scan(&fileName, &commitCount, &lastModified)
 
 		// Calculate file status based on last modified date
-		t, _ := time.Parse("2006-01-02 15:04:05", lastModified)
+		t, _ := time.Parse(time.RFC3339, lastModified)
 		days := time.Since(t).Hours() / 24
 
 		status := "inactive"
@@ -246,7 +246,7 @@ func getFileBreakdown(w http.ResponseWriter, r *http.Request) {
 		rows.Scan(&f.Name, &f.CommitCount, &f.LastModified)
 
 		// Calculate status based on last modified date
-		t, _ := time.Parse("2006-01-02 15:04:05", f.LastModified)
+		t, _ := time.Parse(time.RFC3339, f.LastModified)
 		days := time.Since(t).Hours() / 24
 
 		if days <= 7 {

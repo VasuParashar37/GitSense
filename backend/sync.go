@@ -62,8 +62,25 @@ func syncHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("🎯 First sync detected - generating historical snapshots...")
 		generateHistoricalSnapshots(repo, 30)
 	} else {
-		fmt.Println("📊 Creating today's snapshot...")
-		saveSnapshot(repo)
+		// Only create snapshot if there are new commits OR no snapshot for today exists
+		if newCommits > 0 {
+			fmt.Println("📊 Creating snapshot for new commits...")
+			saveSnapshot(repo)
+		} else {
+			// Check if snapshot for today already exists
+			var todaySnapshotCount int
+			DB.QueryRow(`
+				SELECT COUNT(*) FROM repo_snapshots
+				WHERE repo_name = ? AND DATE(created_at) = DATE('now')
+			`, repo).Scan(&todaySnapshotCount)
+
+			if todaySnapshotCount == 0 {
+				fmt.Println("📊 Creating today's first snapshot...")
+				saveSnapshot(repo)
+			} else {
+				fmt.Println("✅ Snapshot for today already exists, skipping...")
+			}
+		}
 	}
 
 	// Notify if new commits exist

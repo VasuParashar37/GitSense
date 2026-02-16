@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GitSense Dashboard - Deep Investigation Mode</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <style>
         * {
@@ -415,9 +416,10 @@
 
         <!-- Detailed Commit Timeline -->
         <div class="section">
-            <h2><span class="icon">📈</span> Detailed Commit Timeline (Zoomable)</h2>
+            <h2><span class="icon">📈</span> Detailed Commit Timeline (Interactive)</h2>
             <p style="color: #718096; font-size: 14px; margin-bottom: 10px;">
-                Scroll to zoom, drag to pan. See exact commit timestamps and activity spikes.
+                <strong>One point per commit</strong> with exact timestamps. <strong>Scroll to zoom</strong>, <strong>drag to pan</strong>.
+                Hover over any point to see author, message, and SHA. Spikes indicate high commit frequency.
             </p>
             <div class="chart-container">
                 <canvas id="timelineChart"></canvas>
@@ -586,71 +588,129 @@
 
             const ctx = document.getElementById('timelineChart').getContext('2d');
 
-            // Prepare data points with exact timestamps
-            const dataPoints = commits.map(c => ({
-                x: new Date(c.date).getTime(),
-                y: 1,
-                author: c.author,
-                message: c.message,
-                sha: c.sha
-            }));
+            // Sort commits by date (oldest first for proper ordering)
+            const sortedCommits = [...commits].sort((a, b) =>
+                new Date(a.date) - new Date(b.date)
+            );
 
-            // Aggregate by hour for better visualization
-            const hourlyData = {};
-            dataPoints.forEach(point => {
-                const hour = new Date(point.x).setMinutes(0, 0, 0);
-                if (!hourlyData[hour]) {
-                    hourlyData[hour] = { x: hour, y: 0, commits: [] };
-                }
-                hourlyData[hour].y++;
-                hourlyData[hour].commits.push(point);
+            // Create data points with exact timestamps (one point per commit)
+            const dataPoints = sortedCommits.map(c => {
+                const timestamp = new Date(c.date).getTime();
+                return {
+                    x: timestamp,
+                    y: 1,
+                    author: c.author,
+                    message: c.message,
+                    sha: c.sha,
+                    date: c.date
+                };
             });
 
-            const aggregatedData = Object.values(hourlyData);
+            // Calculate commit frequency: for each commit, count how many commits
+            // happened in a 1-hour window centered on that commit
+            const dataWithFrequency = dataPoints.map(point => {
+                const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+                const windowStart = point.x - oneHour / 2;
+                const windowEnd = point.x + oneHour / 2;
+
+                const commitsInWindow = dataPoints.filter(p =>
+                    p.x >= windowStart && p.x <= windowEnd
+                );
+
+                return {
+                    ...point,
+                    y: commitsInWindow.length, // Frequency: number of commits in 1-hour window
+                    commitsInWindow: commitsInWindow
+                };
+            });
 
             new Chart(ctx, {
-                type: 'scatter',
+                type: 'line',
                 data: {
                     datasets: [{
-                        label: 'Commit Activity',
-                        data: aggregatedData,
-                        backgroundColor: 'rgba(102, 126, 234, 0.6)',
+                        label: 'Commit Frequency',
+                        data: dataWithFrequency,
+                        backgroundColor: 'rgba(102, 126, 234, 0.2)',
                         borderColor: '#667eea',
                         borderWidth: 2,
-                        pointRadius: 6,
-                        pointHoverRadius: 8
+                        pointRadius: 5,
+                        pointHoverRadius: 8,
+                        pointBackgroundColor: '#667eea',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        tension: 0.3,
+                        fill: true
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'nearest'
+                    },
                     plugins: {
                         legend: {
                             display: false
                         },
                         tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                            padding: 15,
+                            cornerRadius: 8,
+                            titleFont: {
+                                size: 14,
+                                weight: 'bold'
+                            },
+                            bodyFont: {
+                                size: 13
+                            },
                             callbacks: {
                                 title: (items) => {
-                                    return new Date(items[0].parsed.x).toLocaleString();
+                                    const point = items[0].raw;
+                                    const date = new Date(point.x);
+                                    return date.toLocaleString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                    });
                                 },
                                 label: (item) => {
-                                    return `${item.parsed.y} commit(s)`;
+                                    return `Commit Frequency: ${item.parsed.y}`;
+                                },
+                                afterLabel: (item) => {
+                                    const point = item.raw;
+                                    return [
+                                        '',
+                                        `Author: ${point.author}`,
+                                        `Message: ${point.message.substring(0, 50)}${point.message.length > 50 ? '...' : ''}`,
+                                        `SHA: ${point.sha ? point.sha.substring(0, 7) : 'N/A'}`
+                                    ];
                                 }
                             }
                         },
                         zoom: {
+                            limits: {
+                                x: {
+                                    min: 'original',
+                                    max: 'original'
+                                }
+                            },
                             zoom: {
                                 wheel: {
                                     enabled: true,
+                                    speed: 0.1
                                 },
                                 pinch: {
                                     enabled: true
                                 },
-                                mode: 'x',
+                                mode: 'x'
                             },
                             pan: {
                                 enabled: true,
                                 mode: 'x',
+                                modifierKey: null
                             }
                         }
                     },
@@ -658,21 +718,40 @@
                         x: {
                             type: 'time',
                             time: {
-                                unit: 'day'
+                                unit: 'hour',
+                                displayFormats: {
+                                    hour: 'MMM d, HH:mm',
+                                    day: 'MMM d',
+                                    week: 'MMM d',
+                                    month: 'MMM yyyy'
+                                }
                             },
                             title: {
                                 display: true,
-                                text: 'Timeline'
+                                text: 'Timeline (Scroll to zoom, drag to pan)',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 0
                             }
                         },
                         y: {
                             beginAtZero: true,
                             title: {
                                 display: true,
-                                text: 'Commits'
+                                text: 'Commit Frequency (per hour)',
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
                             },
                             ticks: {
-                                stepSize: 1
+                                stepSize: 1,
+                                precision: 0
                             }
                         }
                     }
