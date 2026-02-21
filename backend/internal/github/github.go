@@ -1,17 +1,18 @@
-package main
+package github
 
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"time"
+
+	"gitsense"
+	"gitsense/internal/db"
 )
 
 // ----------------------------
 // GitHub API MODELS
 // ----------------------------
 type GitHubCommit struct {
-	SHA string `json:"sha"`
+	SHA    string `json:"sha"`
 	Commit struct {
 		Message string `json:"message"`
 		Author  struct {
@@ -32,14 +33,16 @@ func SyncFromGitHub(owner, repo, token string) error {
 
 	// Limit commits to avoid timeout
 	url := fmt.Sprintf(
-		"https://api.github.com/repos/%s/%s/commits?per_page=30",
-		owner, repo,
+		"https://api.github.com/repos/%s/%s/commits?per_page=%d",
+		owner, repo, gitsense.DefaultCommitLimit,
 	)
 
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
+	req, err := gitsense.CreateGitHubRequest("GET", url, token)
+	if err != nil {
+		return fmt.Errorf("failed to create commit request: %w", err)
+	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := gitsense.CreateHTTPClient(gitsense.GitHubAPITimeout)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -59,7 +62,7 @@ func SyncFromGitHub(owner, repo, token string) error {
 	for _, c := range commits {
 
 		// 🔹 Save commit into commits table
-		_, err := DB.Exec(`
+		_, err := db.DB.Exec(`
 			INSERT OR IGNORE INTO commits
 			(repo_name, commit_sha, author, message, commit_date)
 			VALUES (?, ?, ?, ?, ?)
@@ -81,20 +84,28 @@ func SyncFromGitHub(owner, repo, token string) error {
 			owner, repo, c.SHA,
 		)
 
-		req, _ := http.NewRequest("GET", fileURL, nil)
-		req.Header.Set("Authorization", "Bearer "+token)
+		req, err := gitsense.CreateGitHubRequest("GET", fileURL, token)
+		if err != nil {
+			fmt.Printf(" ⚠️  Failed to create file request for %s: %v\n", c.SHA[:7], err)
+			continue
+		}
 
 		resp, err := client.Do(req)
 		if err != nil {
+			fmt.Printf(" ⚠️  Failed to fetch files for %s: %v\n", c.SHA[:7], err)
 			continue
 		}
+		defer resp.Body.Close()
 
 		var detail struct {
 			Files []GitHubFile `json:"files"`
 		}
 
-		json.NewDecoder(resp.Body).Decode(&detail)
-		resp.Body.Close()
+		err = json.NewDecoder(resp.Body).Decode(&detail)
+		if err != nil {
+			fmt.Printf(" ⚠️  Failed to decode files for %s: %v\n", c.SHA[:7], err)
+			continue
+		}
 
 		fmt.Printf(" Commit %s: %d files\n", c.SHA[:7], len(detail.Files))
 
@@ -103,7 +114,7 @@ func SyncFromGitHub(owner, repo, token string) error {
 		// ----------------------------
 		for _, f := range detail.Files {
 
-			_, err := DB.Exec(`
+			_, err := db.DB.Exec(`
 				INSERT INTO file_activity
 				(repo_name, file_name, commit_count, last_modified)
 				VALUES (?, ?, 1, ?)
@@ -133,17 +144,17 @@ func SyncFromGitHub(owner, repo, token string) error {
 // ----------------------------
 // FETCH GITHUB USERNAME
 // ----------------------------
-func getGitHubUsername(token string) string {
-	req, _ := http.NewRequest(
-		"GET",
-		"https://api.github.com/user",
-		nil,
-	)
-	req.Header.Set("Authorization", "Bearer "+token)
+func GetGitHubUsername(token string) string {
+	req, err := gitsense.CreateGitHubRequest("GET", "https://api.github.com/user", token)
+	if err != nil {
+		fmt.Println("❌ Failed to create username request:", err)
+		return ""
+	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := gitsense.CreateHTTPClient(gitsense.DefaultTimeout)
 	resp, err := client.Do(req)
 	if err != nil {
+		fmt.Println("❌ Failed to fetch GitHub username:", err)
 		return ""
 	}
 	defer resp.Body.Close()
@@ -152,6 +163,11 @@ func getGitHubUsername(token string) string {
 		Login string `json:"login"`
 	}
 
-	json.NewDecoder(resp.Body).Decode(&data)
+	err = json.NewDecoder(resp.Body).Decode(&data)
+	if err != nil {
+		fmt.Println("❌ Failed to decode username response:", err)
+		return ""
+	}
+
 	return data.Login
 }

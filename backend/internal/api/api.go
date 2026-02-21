@@ -1,18 +1,21 @@
-package main
+package api
 
 import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"gitsense/internal/db"
+	"gitsense/internal/models"
 )
 
-func healthHandler(w http.ResponseWriter, r *http.Request) {
+func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("GitSense backend running 🚀"))
 }
 
-func getProjectSummary(w http.ResponseWriter, r *http.Request) {
-	rows, err := DB.Query(`SELECT last_modified FROM file_activity`)
+func GetProjectSummary(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.DB.Query(`SELECT last_modified FROM file_activity`)
 	if err != nil {
 		http.Error(w, "DB error", 500)
 		return
@@ -44,7 +47,8 @@ func getProjectSummary(w http.ResponseWriter, r *http.Request) {
 
 	score := 0.0
 	if total > 0 {
-		score = (float64(active) / float64(total)) * 100
+		rawScore := (float64(active) / float64(total)) * 100
+		score = float64(int(rawScore + 0.5)) // Round to nearest integer
 	}
 
 	state := "STABLE"
@@ -54,7 +58,7 @@ func getProjectSummary(w http.ResponseWriter, r *http.Request) {
 		state = "EVOLVING"
 	}
 
-	json.NewEncoder(w).Encode(ProjectSummary{
+	json.NewEncoder(w).Encode(models.ProjectSummary{
 		TotalFiles:    total,
 		ActiveFiles:   active,
 		StableFiles:   stable,
@@ -64,7 +68,7 @@ func getProjectSummary(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func getRepoHistory(w http.ResponseWriter, r *http.Request) {
+func GetRepoHistory(w http.ResponseWriter, r *http.Request) {
 	repo := r.URL.Query().Get("repo")
 
 	if repo == "" {
@@ -72,7 +76,7 @@ func getRepoHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := DB.Query(`
+	rows, err := db.DB.Query(`
 		SELECT active_files, stable_files, inactive_files, activity_score, created_at
 		FROM repo_snapshots
 		WHERE repo_name = ?
@@ -98,7 +102,7 @@ func getRepoHistory(w http.ResponseWriter, r *http.Request) {
 			"active":   a,
 			"stable":   s,
 			"inactive": i,
-			"score":    score,
+			"score":    int(score), // Return as integer
 			"time":     time,
 		})
 	}
@@ -106,7 +110,7 @@ func getRepoHistory(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(history)
 }
 
-func getFileActivity(w http.ResponseWriter, r *http.Request) {
+func GetFileActivity(w http.ResponseWriter, r *http.Request) {
 	repo := r.URL.Query().Get("repo")
 
 	if repo == "" {
@@ -114,7 +118,7 @@ func getFileActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := DB.Query(`
+	rows, err := db.DB.Query(`
 		SELECT file_name, commit_count, last_modified
 		FROM file_activity
 		WHERE repo_name = ?
@@ -158,14 +162,14 @@ func getFileActivity(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(files)
 }
 
-func dashboardHandler(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "dashboard.html")
+func DashboardHandler(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "static/dashboard.html")
 }
 
 // ----------------------------
 // COMMITS PER DAY AGGREGATION
 // ----------------------------
-func getCommitsPerDay(w http.ResponseWriter, r *http.Request) {
+func GetCommitsPerDay(w http.ResponseWriter, r *http.Request) {
 	repo := r.URL.Query().Get("repo")
 
 	if repo == "" {
@@ -173,7 +177,7 @@ func getCommitsPerDay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := DB.Query(`
+	rows, err := db.DB.Query(`
 		SELECT DATE(commit_date) as day, COUNT(*) as count
 		FROM commits
 		WHERE repo_name = ?
@@ -208,7 +212,7 @@ func getCommitsPerDay(w http.ResponseWriter, r *http.Request) {
 // ----------------------------
 // FILE BREAKDOWN (most modified, inactive, frequently updated)
 // ----------------------------
-func getFileBreakdown(w http.ResponseWriter, r *http.Request) {
+func GetFileBreakdown(w http.ResponseWriter, r *http.Request) {
 	repo := r.URL.Query().Get("repo")
 
 	if repo == "" {
@@ -216,7 +220,7 @@ func getFileBreakdown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := DB.Query(`
+	rows, err := db.DB.Query(`
 		SELECT file_name, commit_count, last_modified
 		FROM file_activity
 		WHERE repo_name = ?
@@ -280,9 +284,9 @@ func getFileBreakdown(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
-		"most_modified":       mostModified,
-		"inactive":            inactive,
-		"frequently_updated":  frequentlyUpdated,
+		"most_modified":      mostModified,
+		"inactive":           inactive,
+		"frequently_updated": frequentlyUpdated,
 	}
 
 	json.NewEncoder(w).Encode(response)
@@ -291,7 +295,7 @@ func getFileBreakdown(w http.ResponseWriter, r *http.Request) {
 // ----------------------------
 // CONTRIBUTOR DISTRIBUTION
 // ----------------------------
-func getContributorDistribution(w http.ResponseWriter, r *http.Request) {
+func GetContributorDistribution(w http.ResponseWriter, r *http.Request) {
 	repo := r.URL.Query().Get("repo")
 
 	if repo == "" {
@@ -299,7 +303,7 @@ func getContributorDistribution(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := DB.Query(`
+	rows, err := db.DB.Query(`
 		SELECT author, COUNT(*) as commit_count
 		FROM commits
 		WHERE repo_name = ?
@@ -322,12 +326,10 @@ func getContributorDistribution(w http.ResponseWriter, r *http.Request) {
 		rows.Scan(&author, &count)
 
 		contributors = append(contributors, map[string]interface{}{
-			"author": author,
+			"author":  author,
 			"commits": count,
 		})
 	}
 
 	json.NewEncoder(w).Encode(contributors)
 }
-
-

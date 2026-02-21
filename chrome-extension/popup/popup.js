@@ -1,5 +1,13 @@
 let authToken = "";
 let currentChart = null;
+const UI_THEME = {
+    primary: "#1f7a8c",
+    primarySoft: "rgba(31, 122, 140, 0.16)",
+    accent: "#ef8354",
+    textMuted: "#5c7688",
+    grid: "rgba(20, 47, 65, 0.1)",
+    tooltip: "rgba(15, 39, 56, 0.92)"
+};
 
 // ----------------------------
 // INITIALIZE - CHECK FOR SAVED TOKEN
@@ -102,8 +110,9 @@ document.getElementById("login").addEventListener("click", () => {
     showLoading("Opening GitHub login...");
 
     // Use window.open() instead of chrome.tabs.create() so postMessage works
+    const extensionOrigin = encodeURIComponent(window.location.origin);
     window.open(
-        "http://localhost:8080/auth/github",
+        `http://localhost:8080/auth/github?origin=${extensionOrigin}`,
         "_blank",
         "width=600,height=700"
     );
@@ -350,17 +359,17 @@ function renderChart(data) {
                 {
                     label: "Activity Score",
                     data: scores,
-                    borderColor: "#667eea",
-                    backgroundColor: "rgba(102, 126, 234, 0.15)",
+                    borderColor: UI_THEME.primary,
+                    backgroundColor: UI_THEME.primarySoft,
                     fill: true,
                     tension: 0.4,
                     borderWidth: 3,
                     pointRadius: 4,
                     pointHoverRadius: 6,
-                    pointBackgroundColor: "#667eea",
+                    pointBackgroundColor: UI_THEME.primary,
                     pointBorderColor: "#fff",
                     pointBorderWidth: 2,
-                    pointHoverBackgroundColor: "#764ba2",
+                    pointHoverBackgroundColor: UI_THEME.accent,
                     pointHoverBorderColor: "#fff"
                 }
             ]
@@ -373,7 +382,7 @@ function renderChart(data) {
                     display: false
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    backgroundColor: UI_THEME.tooltip,
                     padding: 12,
                     cornerRadius: 8,
                     displayColors: false,
@@ -389,11 +398,11 @@ function renderChart(data) {
                     min: 0,
                     max: 100,
                     grid: {
-                        color: 'rgba(0, 0, 0, 0.05)',
+                        color: UI_THEME.grid,
                         drawBorder: false
                     },
                     ticks: {
-                        color: '#718096',
+                        color: UI_THEME.textMuted,
                         font: {
                             size: 11
                         }
@@ -405,7 +414,7 @@ function renderChart(data) {
                         drawBorder: false
                     },
                     ticks: {
-                        color: '#718096',
+                        color: UI_THEME.textMuted,
                         font: {
                             size: 10
                         },
@@ -472,4 +481,3 @@ function loadCommits(repo) {
         console.error("❌ Failed to load commits");
       });
   }
-

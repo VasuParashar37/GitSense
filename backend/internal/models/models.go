@@ -1,4 +1,4 @@
-package main
+package models
 
 type ProjectSummary struct {
 	TotalFiles    int     `json:"total_files"`

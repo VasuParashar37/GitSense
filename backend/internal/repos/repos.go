@@ -1,8 +1,10 @@
-package main
+package repos
 
 import (
 	"encoding/json"
 	"net/http"
+
+	"gitsense"
 )
 
 type Repo struct {
@@ -12,20 +14,18 @@ type Repo struct {
 	} `json:"owner"`
 }
 
-func getUserRepos(w http.ResponseWriter, r *http.Request) {
+func GetUserRepos(w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("Authorization")
 	if token == "" {
 		http.Error(w, "Unauthorized", 401)
 		return
 	}
 
-	req, _ := http.NewRequest(
-		"GET",
-		"https://api.github.com/user/repos",
-		nil,
-	)
-
-	req.Header.Set("Authorization", "Bearer "+token)
+	req, err := gitsense.CreateGitHubRequest("GET", "https://api.github.com/user/repos", token)
+	if err != nil {
+		http.Error(w, "Failed to create GitHub request", http.StatusInternalServerError)
+		return
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

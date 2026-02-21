@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GitSense Dashboard - Deep Investigation Mode</title>
+
+  <!-- Chart.js + plugins -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+
+  <link rel="stylesheet" href="/static/dashboard.css?v=20260221c">
+</head>
+<body>
+<div id="globalLoading" class="global-loading">
+  <div class="spinner-large"></div>
+  <p id="loadingMessage">Loading dashboard data...</p>
+</div>
+
+<div class="container">
+  <div id="pageStatus" class="page-status hidden"></div>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-content">
+      <h1>📊 GitSense Dashboard</h1>
+      <div class="repo-name" id="repoName">Loading repository...</div>
+      <div class="repo-meta" id="repoMeta">Preparing insights...</div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-success" onclick="exportData('json')">📥 Export JSON</button>
+      <button class="btn btn-success" onclick="exportData('csv')">📥 Export CSV</button>
+      <button class="btn btn-primary" onclick="window.close()">← Back</button>
+    </div>
+  </div>
+
+  <div class="control-strip section">
+    <div class="control-group">
+      <label for="timeRange">Time Range</label>
+      <select id="timeRange" class="control-input">
+        <option value="0">All time</option>
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="commitSearch">Search Commits</label>
+      <input id="commitSearch" class="control-input" type="text" placeholder="author, message, sha..." />
+    </div>
+    <div class="control-actions">
+      <button class="btn btn-primary" id="refreshData">↻ Refresh</button>
+      <div id="visibleSummary" class="visible-summary">Showing recent activity</div>
+    </div>
+  </div>
+
+  <!-- Stats Grid -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <h3>
+        Activity Score
+        <span class="info-icon">
+          i
+          <div class="info-tooltip">
+            <strong>📊 What is Activity Score?</strong>
+            A measure of your repository's health based on recent file activity.
+
+            <strong style="margin-top: 12px;">🔢 How it's calculated:</strong>
+            <ul>
+              <li><strong>Active files</strong> (≤7 days): Full weight</li>
+              <li><strong>Stable files</strong> (8-30 days): Moderate weight</li>
+              <li><strong>Inactive files</strong> (&gt;30 days): No weight</li>
+            </ul>
+
+            <strong style="margin-top: 12px;">📈 Score Ranges:</strong>
+            <ul>
+              <li><strong>&gt;50%</strong> = High Activity 🔥</li>
+              <li><strong>25-50%</strong> = Evolving 📊</li>
+              <li><strong>&lt;25%</strong> = Stable/Dormant 💤</li>
+            </ul>
+          </div>
+        </span>
+      </h3>
+      <div class="value" id="activityScore">--</div>
+      <div class="subtext" id="activityScoreSub">Current repository health</div>
+    </div>
+
+    <div class="stat-card">
+      <h3>Total Commits</h3>
+      <div class="value" id="totalCommits">--</div>
+      <div class="subtext" id="totalCommitsSub">All time</div>
+    </div>
+
+    <div class="stat-card">
+      <h3>Active Files</h3>
+      <div class="value" id="activeFiles">--</div>
+      <div class="subtext" id="activeFilesSub">Modified in last 7 days</div>
+    </div>
+
+    <div class="stat-card">
+      <h3>Total Files</h3>
+      <div class="value" id="totalFiles">--</div>
+      <div class="subtext" id="totalFilesSub">Being tracked</div>
+    </div>
+  </div>
+
+  <!-- Detailed Commit Timeline -->
+  <div class="section">
+    <h2><span class="icon">📈</span> Detailed Commit Timeline (Interactive)</h2>
+    <div class="timeline-controls">
+      <div class="timeline-repo">Repository: <strong id="timelineRepoName">-</strong></div>
+      <div class="timeline-row">
+        <div class="timeline-group">
+          <span class="timeline-label">Date Range</span>
+          <div class="timeline-buttons" id="rangeButtons">
+            <button class="btn btn-chip active" type="button" data-range="7d">7D</button>
+            <button class="btn btn-chip" type="button" data-range="30d">30D</button>
+            <button class="btn btn-chip" type="button" data-range="90d">90D</button>
+            <button class="btn btn-chip" type="button" data-range="custom">Custom</button>
+          </div>
+          <div class="timeline-custom hidden" id="customRangeInputs">
+            <input type="date" id="customStart" class="control-input" />
+            <input type="date" id="customEnd" class="control-input" />
+          </div>
+        </div>
+        <div class="timeline-group">
+          <span class="timeline-label">View Mode</span>
+          <div class="timeline-buttons" id="viewModeButtons">
+            <button class="btn btn-chip active" type="button" data-view="hourly">Hourly</button>
+            <button class="btn btn-chip" type="button" data-view="daily">Daily</button>
+          </div>
+        </div>
+      </div>
+      <p class="timeline-help">
+        Hourly view is used for short ranges (7 days). Daily view is used for longer ranges (30+ days).
+      </p>
+    </div>
+    <div class="chart-container">
+      <canvas id="timelineChart"></canvas>
+      <div id="timelineEmpty" class="chart-empty hidden">No commits match the current filters.</div>
+    </div>
+    <div style="text-align: center; margin-top: 15px;">
+      <button class="btn btn-primary" onclick="resetTimelineZoom()" style="padding: 8px 16px; font-size: 13px;">
+        🔄 Reset Timeline View
+      </button>
+      <span id="zoomInfo" style="margin-left: 15px; color: #718096; font-size: 13px;"></span>
+    </div>
+  </div>
+
+  <!-- Activity Trends -->
+  <div class="grid-2">
+    <div class="section">
+      <h2><span class="icon">📊</span> Commits Per Day</h2>
+      <div class="chart-container" style="height: 300px;">
+        <canvas id="commitsPerDayChart"></canvas>
+        <div id="commitsPerDayEmpty" class="chart-empty hidden">No commit trend data for selected filters.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2><span class="icon">🥧</span> Contribution Distribution</h2>
+      <div class="chart-container" style="height: 300px;">
+        <canvas id="contributionChart"></canvas>
+        <div id="contributionEmpty" class="chart-empty hidden">No contributor data for selected filters.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full Commit History Table -->
+  <div class="section">
+    <h2><span class="icon">📝</span> Full Commit History</h2>
+    <div class="table-container">
+      <table id="commitTable">
+        <thead>
+          <tr>
+            <th class="sortable" data-sort="sha">SHA</th>
+            <th class="sortable" data-sort="date">Time</th>
+            <th class="sortable" data-sort="author">Author</th>
+            <th class="sortable" data-sort="message">Message</th>
+          </tr>
+        </thead>
+        <tbody id="commitTableBody">
+          <tr><td colspan="4" class="loading">Loading commits...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination">
+      <button id="prevPage" onclick="changePage(-1)">← Previous</button>
+      <span class="page-info" id="pageInfo">Page 1</span>
+      <button id="nextPage" onclick="changePage(1)">Next →</button>
+    </div>
+  </div>
+
+  <!-- File Activity Breakdown -->
+  <div class="section">
+    <h2><span class="icon">📁</span> File Activity Breakdown</h2>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="mostModified">🔥 Most Modified</button>
+      <button class="tab" data-tab="inactive">📉 Inactive (&gt;30 days)</button>
+      <button class="tab" data-tab="frequentlyUpdated">📈 Frequently Updated</button>
+    </div>
+
+    <div id="mostModified" class="tab-content active">
+      <div class="file-list" id="mostModifiedList">
+        <div class="loading">Loading files...</div>
+      </div>
+    </div>
+
+    <div id="inactive" class="tab-content">
+      <div class="file-list" id="inactiveList">
+        <div class="loading">Loading files...</div>
+      </div>
+    </div>
+
+    <div id="frequentlyUpdated" class="tab-content">
+      <div class="file-list" id="frequentlyUpdatedList">
+        <div class="loading">Loading files...</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/static/dashboard.js?v=20260221c"></script>
+</body>
+</html>
