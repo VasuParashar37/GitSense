@@ -1,5 +1,9 @@
 let authToken = "";
 let currentChart = null;
+const LOCAL_API_BASE_URL = "http://localhost:8080";
+const DEFAULT_API_BASE_URL = "https://gitsense-ooly.onrender.com";
+const API_BASE_CANDIDATES = [LOCAL_API_BASE_URL, DEFAULT_API_BASE_URL];
+let API_BASE_URL = "";
 const UI_THEME = {
     primary: "#1f7a8c",
     primarySoft: "rgba(31, 122, 140, 0.16)",
@@ -16,8 +20,18 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log("🔍 Popup loaded, checking storage...");
 
     // Check if user is already authenticated
-    chrome.storage.local.get(['authToken', 'selectedRepo'], (result) => {
+    chrome.storage.local.get(['authToken', 'selectedRepo', 'apiBaseUrl'], (result) => {
         console.log("📦 Storage result:", result);
+        resolveApiBaseURL(result.apiBaseUrl)
+            .then((resolvedURL) => {
+                API_BASE_URL = resolvedURL;
+                chrome.storage.local.set({ apiBaseUrl: resolvedURL });
+                console.log("🌐 Using API base URL:", API_BASE_URL);
+            })
+            .catch(() => {
+                API_BASE_URL = result.apiBaseUrl || DEFAULT_API_BASE_URL;
+                console.warn("⚠️ Could not validate API base URL, falling back to:", API_BASE_URL);
+            });
 
         if (result.authToken) {
             console.log("✅ Auth token found");
@@ -32,6 +46,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+async function resolveApiBaseURL(savedURL) {
+    const candidates = [];
+    if (savedURL) candidates.push(savedURL);
+    for (const url of API_BASE_CANDIDATES) {
+        if (!candidates.includes(url)) candidates.push(url);
+    }
+
+    for (const baseURL of candidates) {
+        const ok = await isHealthy(baseURL);
+        if (ok) return baseURL;
+    }
+    throw new Error("No healthy API base URL found");
+}
+
+async function isHealthy(baseURL) {
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2500);
+        const res = await fetch(`${baseURL}/health`, { method: "GET", signal: controller.signal });
+        clearTimeout(timeout);
+        return res.ok;
+    } catch (_err) {
+        return false;
+    }
+}
 
 // ----------------------------
 // LOGOUT FUNCTIONALITY
@@ -107,12 +147,17 @@ function enableSyncButton() {
 // LOGIN WITH GITHUB
 // ----------------------------
 document.getElementById("login").addEventListener("click", () => {
+    if (!API_BASE_URL) {
+        showStatus("❌ Backend not reachable. Start backend or configure API URL.", "error");
+        return;
+    }
+
     showLoading("Opening GitHub login...");
 
     // Use window.open() instead of chrome.tabs.create() so postMessage works
     const extensionOrigin = encodeURIComponent(window.location.origin);
     window.open(
-        `http://localhost:8080/auth/github?origin=${extensionOrigin}`,
+        `${API_BASE_URL}/auth/github?origin=${extensionOrigin}`,
         "_blank",
         "width=600,height=700"
     );
@@ -145,9 +190,9 @@ function loadRepositories(selectedRepo = null) {
     showLoading("Loading repositories...");
 
     // fetch("https://gitsense-ooly.onrender.com/repos", {
-    fetch("http://localhost:8080/repos", {
+    fetch(`${API_BASE_URL}/repos`, {
         headers: {
-            "Authorization": authToken
+            "Authorization": `Bearer ${authToken}`
         }
     })
         .then(res => res.json())
@@ -221,9 +266,9 @@ document.getElementById("sync").addEventListener("click", () => {
     showLoading("Syncing repository...");
 
     // fetch(`https://gitsense-ooly.onrender.com/sync?owner=${owner}&repo=${repo}`, {
-    fetch(`http://localhost:8080/sync?owner=${owner}&repo=${repo}`, {
+    fetch(`${API_BASE_URL}/sync?owner=${owner}&repo=${repo}`, {
         headers: {
-            "Authorization": authToken
+            "Authorization": `Bearer ${authToken}`
         }
     })
         .then(res => res.text())
@@ -263,7 +308,7 @@ document.getElementById("viewDashboard").addEventListener("click", () => {
     }
 
     // Open dashboard in new tab with repo parameter
-    const dashboardUrl = `http://localhost:8080/dashboard?repo=${encodeURIComponent(repoValue)}`;
+    const dashboardUrl = `${API_BASE_URL}/dashboard?repo=${encodeURIComponent(repoValue)}`;
     chrome.tabs.create({ url: dashboardUrl });
 });
 
@@ -290,7 +335,7 @@ function checkAndLoadExistingData(repo) {
     console.log("📊 Fetching history for repo:", repo);
 
     // Silently check if repo has been synced before
-    fetch(`http://localhost:8080/history?repo=${repo}`)
+    fetch(`${API_BASE_URL}/history?repo=${repo}`)
         .then(res => {
             console.log("📡 Response status:", res.status);
             return res.json();
@@ -437,7 +482,7 @@ function loadHistory(repo) {
     showLoading("Loading activity chart...");
 
     // fetch(`https://gitsense-ooly.onrender.com/history?repo=${repo}`)
-    fetch(`http://localhost:8080/history?repo=${repo}`)
+    fetch(`${API_BASE_URL}/history?repo=${repo}`)
         .then(res => res.json())
         .then(data => {
             renderChart(data);
@@ -448,7 +493,7 @@ function loadHistory(repo) {
         });
 }
 function loadCommits(repo) {
-    fetch(`http://localhost:8080/commits?repo=${repo}`)
+    fetch(`${API_BASE_URL}/commits?repo=${repo}`)
       .then(res => res.json())
       .then(commits => {
         const list = document.getElementById("commitList");

@@ -1,4 +1,5 @@
 // Background script for auto-syncing repository activity
+const DEFAULT_API_BASE_URL = "https://gitsense-ooly.onrender.com";
 
 // ----------------------------
 // MESSAGE LISTENER FROM POPUP
@@ -25,9 +26,10 @@ chrome.runtime.onMessage.addListener((msg) => {
 // ----------------------------
 async function autoSync() {
   // Get token and repo from storage
-  const result = await chrome.storage.local.get(['authToken', 'selectedRepo']);
+  const result = await chrome.storage.local.get(['authToken', 'selectedRepo', 'apiBaseUrl']);
 
   const { authToken, selectedRepo } = result;
+  const apiBaseUrl = result.apiBaseUrl || DEFAULT_API_BASE_URL;
 
   // Exit if not authenticated or no repo selected
   if (!authToken || !selectedRepo) {
@@ -40,9 +42,9 @@ async function autoSync() {
 
   try {
     // Sync the repository
-    const response = await fetch(`http://localhost:8080/sync?owner=${owner}&repo=${repo}`, {
+    const response = await fetch(`${apiBaseUrl}/sync?owner=${owner}&repo=${repo}`, {
       headers: {
-        Authorization: authToken
+        Authorization: `Bearer ${authToken}`
       }
     });
 

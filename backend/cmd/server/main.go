@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"gitsense"
 	"gitsense/internal/api"
@@ -59,9 +60,9 @@ func main() {
 		if allowedOrigin == "" {
 			allowedOrigin = os.Getenv("EXTENSION_ORIGIN")
 		}
-		if allowedOrigin == "" {
-			// Fallback for local debugging.
-			allowedOrigin = "*"
+		if allowedOrigin == "" || (!strings.HasPrefix(allowedOrigin, "chrome-extension://") && !strings.HasPrefix(allowedOrigin, "http://localhost")) {
+			http.Error(w, "Invalid extension origin", http.StatusBadRequest)
+			return
 		}
 		fmt.Fprintf(w, `
 		<script>

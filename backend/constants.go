@@ -28,4 +28,7 @@ const (
 
 	// Historical snapshot window
 	HistoricalSnapshotDays = 30
+
+	// Session configuration
+	SessionTTLHours = 24 * 30
 )

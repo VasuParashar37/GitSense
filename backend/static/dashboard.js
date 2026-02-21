@@ -32,6 +32,7 @@ const THEME = {
 
 const urlParams = new URLSearchParams(window.location.search);
 const repo = urlParams.get("repo");
+const API_BASE_URL = window.location.origin;
 
 if (!repo) {
   document.body.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><h2>No repository specified</h2><p>Please open the dashboard from the extension.</p></div>';
@@ -225,10 +226,10 @@ async function loadDashboardData(repoNameWithOwner, isRefresh = false) {
 
   try {
     const [history, commits, files, fileBreakdown] = await Promise.all([
-      fetchJSONOrThrow(`http://localhost:8080/history?repo=${repoName}`),
-      fetchJSONOrThrow(`http://localhost:8080/commits?repo=${repoName}&limit=100`),
-      fetchJSONOrThrow(`http://localhost:8080/files?repo=${repoName}`),
-      fetchJSONOrThrow(`http://localhost:8080/file-breakdown?repo=${repoName}`)
+      fetchJSONOrThrow(`${API_BASE_URL}/history?repo=${repoName}`),
+      fetchJSONOrThrow(`${API_BASE_URL}/commits?repo=${repoName}&limit=100`),
+      fetchJSONOrThrow(`${API_BASE_URL}/files?repo=${repoName}`),
+      fetchJSONOrThrow(`${API_BASE_URL}/file-breakdown?repo=${repoName}`)
     ]);
 
     latestHistory = history || [];

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"sync"
 
 	_ "modernc.org/sqlite"
@@ -35,7 +36,12 @@ func SetDB(database *sql.DB) {
 }
 
 func initializeDB() (*sql.DB, error) {
-	database, err := sql.Open("sqlite", "gitsense.db")
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "gitsense.db"
+	}
+
+	database, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -143,6 +149,25 @@ func InitDB() error {
 	`
 	if _, err = database.Exec(repoSnapshotTable); err != nil {
 		return fmt.Errorf("failed to create repo_snapshots table: %w", err)
+	}
+
+	// ----------------------------
+	// SESSIONS TABLE
+	// ----------------------------
+	sessionsTable := `
+	CREATE TABLE IF NOT EXISTS sessions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id INTEGER NOT NULL,
+		session_token TEXT UNIQUE NOT NULL,
+		github_token TEXT NOT NULL,
+		expires_at DATETIME NOT NULL,
+		last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(user_id) REFERENCES users(id)
+	);
+	`
+	if _, err = database.Exec(sessionsTable); err != nil {
+		return fmt.Errorf("failed to create sessions table: %w", err)
 	}
 
 	return nil

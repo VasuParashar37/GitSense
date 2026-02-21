@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gitsense"
+	"gitsense/internal/auth"
 	"gitsense/internal/db"
 	githubapi "gitsense/internal/github"
 )
@@ -37,10 +38,15 @@ func SyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate Authorization header
-	token := r.Header.Get("Authorization")
-	if token == "" {
-		gitsense.SendErrorResponse(w, "Missing Authorization header", http.StatusUnauthorized)
+	sessionToken, err := auth.ExtractSessionToken(r)
+	if err != nil {
+		gitsense.SendErrorResponse(w, "Missing/invalid Authorization header", http.StatusUnauthorized)
+		return
+	}
+
+	githubToken, userID, err := auth.ResolveGitHubToken(sessionToken)
+	if err != nil {
+		gitsense.SendErrorResponse(w, "Invalid or expired session", http.StatusUnauthorized)
 		return
 	}
 
@@ -54,7 +60,7 @@ func SyncHandler(w http.ResponseWriter, r *http.Request) {
 	).Scan(&before)
 
 	// Fetch from GitHub
-	if err := githubapi.SyncFromGitHub(owner, repo, token); err != nil {
+	if err := githubapi.SyncFromGitHub(owner, repo, githubToken); err != nil {
 		http.Error(w, "Sync failed", http.StatusInternalServerError)
 		return
 	}
@@ -71,10 +77,8 @@ func SyncHandler(w http.ResponseWriter, r *http.Request) {
 	// Save repo under user
 	db.DB.Exec(`
 		INSERT INTO user_repos (user_id, repo_name, last_synced)
-		SELECT id, ?, CURRENT_TIMESTAMP
-		FROM users
-		WHERE access_token = ?
-	`, repo, token)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+	`, userID, repo)
 
 	// Snapshot handling
 	var snapshotCount int

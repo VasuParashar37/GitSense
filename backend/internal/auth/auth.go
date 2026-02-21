@@ -86,6 +86,10 @@ func GithubCallback(w http.ResponseWriter, r *http.Request) {
 
 	// ✅ CALL HELPER FROM github.go
 	username := githubapi.GetGitHubUsername(token)
+	if username == "" {
+		http.Error(w, "Failed to resolve GitHub username", http.StatusBadGateway)
+		return
+	}
 
 	// ✅ SAVE USER
 	_, err = db.DB.Exec(`
@@ -100,14 +104,26 @@ func GithubCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send token back to extension
+	var userID int
+	if err := db.DB.QueryRow(`SELECT id FROM users WHERE github_username = ?`, username).Scan(&userID); err != nil {
+		http.Error(w, "DB user lookup error", 500)
+		return
+	}
+
+	sessionToken, err := CreateSession(userID, token)
+	if err != nil {
+		http.Error(w, "Failed to create session", 500)
+		return
+	}
+
+	// Send session token back to extension
 	backendURL := os.Getenv("BACKEND_URL")
 	if backendURL == "" {
 		// Default to localhost for development
 		backendURL = "http://localhost:8080"
 	}
 
-	redirectURL := fmt.Sprintf("%s/token?value=%s", backendURL, url.QueryEscape(token))
+	redirectURL := fmt.Sprintf("%s/token?value=%s", backendURL, url.QueryEscape(sessionToken))
 	if origin != "" {
 		redirectURL += "&origin=" + url.QueryEscape(origin)
 	}

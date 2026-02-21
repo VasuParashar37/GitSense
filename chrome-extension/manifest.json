@@ -11,6 +11,7 @@
     ],
     "host_permissions": [
         "https://gitsense-ooly.onrender.com/*",
+        "https://*.onrender.com/*",
         "https://github.com/*",
         "http://localhost:8080/*"
     ],

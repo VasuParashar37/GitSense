@@ -3,10 +3,16 @@ services:
     name: gitsense-backend
     env: go
     plan: free
-    buildCommand: go build
-    startCommand: ./main
+    buildCommand: go build -o app ./cmd/server
+    startCommand: ./app
     envVars:
       - key: GITHUB_CLIENT_ID
         sync: false
       - key: GITHUB_CLIENT_SECRET
         sync: false
+      - key: BACKEND_URL
+        sync: false
+      - key: EXTENSION_ORIGIN
+        sync: false
+      - key: DB_PATH
+        value: /var/data/gitsense.db
